@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.env
+tests/
+test.db
+*.session
+*.session-journal
+*.csv
