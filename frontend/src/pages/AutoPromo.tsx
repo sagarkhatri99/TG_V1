@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   Box,
   Typography,
@@ -6,13 +6,13 @@ import {
   CardContent,
   TextField,
   Button,
-  Grid,
   Alert,
   CircularProgress,
   InputAdornment,
 } from '@mui/material';
 import { Campaign as CampaignIcon } from '@mui/icons-material';
 import api, { endpoints } from '../api';
+
 
 export default function AutoPromo() {
   const [loading, setLoading] = useState(false);
@@ -29,6 +29,7 @@ export default function AutoPromo() {
     interval_seconds: '3600',
   });
 
+
   const handleSendOTP = async () => {
     setLoading(true);
     try {
@@ -37,9 +38,11 @@ export default function AutoPromo() {
       formDataToSend.append('api_hash', formData.api_hash);
       formDataToSend.append('phone_number', formData.phone_number);
 
+
       await api.post(endpoints.autoPromo.startAuth, formDataToSend, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
+
 
       setAlert({ type: 'success', message: 'OTP sent to your phone!' });
       setOtpSent(true);
@@ -49,6 +52,7 @@ export default function AutoPromo() {
       setLoading(false);
     }
   };
+
 
   const handleStartPromo = async () => {
     setLoading(true);
@@ -62,9 +66,11 @@ export default function AutoPromo() {
       formDataToSend.append('promo_message', formData.promo_message);
       formDataToSend.append('interval_seconds', formData.interval_seconds);
 
+
       const response = await api.post(endpoints.autoPromo.start, formDataToSend, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
+
 
       setAlert({ type: 'success', message: response.data || 'Auto promo started successfully!' });
     } catch (error: any) {
@@ -73,6 +79,7 @@ export default function AutoPromo() {
       setLoading(false);
     }
   };
+
 
   return (
     <Box>
@@ -83,37 +90,41 @@ export default function AutoPromo() {
         Automatically send promotional messages to target groups at specified intervals.
       </Typography>
 
+
       {alert && (
         <Alert severity={alert.type} onClose={() => setAlert(null)} sx={{ mb: 3 }}>
           {alert.message}
         </Alert>
       )}
 
+
       <Card sx={{ mt: 3 }}>
         <CardContent>
-          <Grid container spacing={3}>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="API ID"
-                type="number"
-                value={formData.api_id}
-                onChange={(e) => setFormData({ ...formData, api_id: e.target.value })}
-                disabled={otpSent}
-                sx={{ mb: 2 }}
-              />
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="API Hash"
-                value={formData.api_hash}
-                onChange={(e) => setFormData({ ...formData, api_hash: e.target.value })}
-                disabled={otpSent}
-                sx={{ mb: 2 }}
-              />
-            </Grid>
-            <Grid item xs={12}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 3 }}>
+              <Box sx={{ flex: 1 }}>
+                <TextField
+                  fullWidth
+                  label="API ID"
+                  type="number"
+                  value={formData.api_id}
+                  onChange={(e) => setFormData({ ...formData, api_id: e.target.value })}
+                  disabled={otpSent}
+                  sx={{ mb: 2 }}
+                />
+              </Box>
+              <Box sx={{ flex: 1 }}>
+                <TextField
+                  fullWidth
+                  label="API Hash"
+                  value={formData.api_hash}
+                  onChange={(e) => setFormData({ ...formData, api_hash: e.target.value })}
+                  disabled={otpSent}
+                  sx={{ mb: 2 }}
+                />
+              </Box>
+            </Box>
+            <Box>
               <TextField
                 fullWidth
                 label="Phone Number"
@@ -123,10 +134,11 @@ export default function AutoPromo() {
                 disabled={otpSent}
                 sx={{ mb: 2 }}
               />
-            </Grid>
+            </Box>
+
 
             {!otpSent ? (
-              <Grid item xs={12}>
+              <Box>
                 <Button
                   variant="contained"
                   onClick={handleSendOTP}
@@ -135,10 +147,10 @@ export default function AutoPromo() {
                 >
                   {loading ? <CircularProgress size={24} /> : 'Send OTP'}
                 </Button>
-              </Grid>
+              </Box>
             ) : (
-              <>
-                <Grid item xs={12}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <Box>
                   <TextField
                     fullWidth
                     label="OTP Code"
@@ -146,8 +158,8 @@ export default function AutoPromo() {
                     onChange={(e) => setFormData({ ...formData, otp: e.target.value })}
                     sx={{ mb: 2 }}
                   />
-                </Grid>
-                <Grid item xs={12}>
+                </Box>
+                <Box>
                   <TextField
                     fullWidth
                     label="Target Group"
@@ -156,8 +168,8 @@ export default function AutoPromo() {
                     onChange={(e) => setFormData({ ...formData, target_group: e.target.value })}
                     sx={{ mb: 2 }}
                   />
-                </Grid>
-                <Grid item xs={12}>
+                </Box>
+                <Box>
                   <TextField
                     fullWidth
                     multiline
@@ -168,8 +180,8 @@ export default function AutoPromo() {
                     onChange={(e) => setFormData({ ...formData, promo_message: e.target.value })}
                     sx={{ mb: 2 }}
                   />
-                </Grid>
-                <Grid item xs={12}>
+                </Box>
+                <Box>
                   <TextField
                     fullWidth
                     label="Interval"
@@ -181,8 +193,8 @@ export default function AutoPromo() {
                     }}
                     sx={{ mb: 3 }}
                   />
-                </Grid>
-                <Grid item xs={12}>
+                </Box>
+                <Box>
                   <Button
                     variant="contained"
                     startIcon={<CampaignIcon />}
@@ -192,10 +204,10 @@ export default function AutoPromo() {
                   >
                     {loading ? <CircularProgress size={24} /> : 'Start Auto Promo'}
                   </Button>
-                </Grid>
-              </>
+                </Box>
+              </Box>
             )}
-          </Grid>
+          </Box>
         </CardContent>
       </Card>
     </Box>

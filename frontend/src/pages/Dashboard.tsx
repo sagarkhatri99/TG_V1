@@ -1,6 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  Grid,  // Add this
   Card,
   CardContent,
   Typography,
@@ -27,10 +26,12 @@ import api, { endpoints } from '../api';
 import type { SystemStats, TelegramAccount } from '../types';
 
 
+
 export default function Dashboard() {
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [accounts, setAccounts] = useState<TelegramAccount[]>([]);
   const [loading, setLoading] = useState(true);
+
 
   useEffect(() => {
     const fetchData = async () => {
@@ -48,8 +49,10 @@ export default function Dashboard() {
       }
     };
 
+
     fetchData();
   }, []);
+
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -60,6 +63,7 @@ export default function Dashboard() {
     }
   };
 
+
   const getStatusColor = (status: string): any => {
     switch (status) {
       case 'active': return 'success';
@@ -69,6 +73,7 @@ export default function Dashboard() {
     }
   };
 
+
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
@@ -76,6 +81,7 @@ export default function Dashboard() {
       </Box>
     );
   }
+
 
   return (
     <Box>
@@ -86,8 +92,9 @@ export default function Dashboard() {
         Welcome to TG Tools. Monitor your Telegram automation activities.
       </Typography>
 
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
+
+      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, flexWrap: 'wrap', gap: 3, mb: 4 }}>
+        <Box sx={{ flex: { xs: '1 1 100%', sm: '1 1 calc(50% - 12px)', md: '1 1 calc(25% - 18px)' } }}>
           <Card>
             <CardContent>
               <Box display="flex" alignItems="center" justifyContent="space-between">
@@ -103,9 +110,9 @@ export default function Dashboard() {
               </Box>
             </CardContent>
           </Card>
-        </Grid>
+        </Box>
 
-        <Grid item xs={12} sm={6} md={3}>
+        <Box sx={{ flex: { xs: '1 1 100%', sm: '1 1 calc(50% - 12px)', md: '1 1 calc(25% - 18px)' } }}>
           <Card>
             <CardContent>
               <Box display="flex" alignItems="center" justifyContent="space-between">
@@ -121,9 +128,9 @@ export default function Dashboard() {
               </Box>
             </CardContent>
           </Card>
-        </Grid>
+        </Box>
 
-        <Grid item xs={12} sm={6} md={3}>
+        <Box sx={{ flex: { xs: '1 1 100%', sm: '1 1 calc(50% - 12px)', md: '1 1 calc(25% - 18px)' } }}>
           <Card>
             <CardContent>
               <Box display="flex" alignItems="center" justifyContent="space-between">
@@ -137,9 +144,9 @@ export default function Dashboard() {
               </Box>
             </CardContent>
           </Card>
-        </Grid>
+        </Box>
 
-        <Grid item xs={12} sm={6} md={3}>
+        <Box sx={{ flex: { xs: '1 1 100%', sm: '1 1 calc(50% - 12px)', md: '1 1 calc(25% - 18px)' } }}>
           <Card>
             <CardContent>
               <Box display="flex" alignItems="center" justifyContent="space-between">
@@ -155,11 +162,11 @@ export default function Dashboard() {
               </Box>
             </CardContent>
           </Card>
-        </Grid>
-      </Grid>
+        </Box>
+      </Box>
 
-      <Grid container spacing={3}>
-        <Grid item xs={12} md={6}>
+      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 3 }}>
+        <Box sx={{ flex: 1 }}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="h6" gutterBottom>
               Recent Accounts
@@ -183,9 +190,9 @@ export default function Dashboard() {
               ))}
             </List>
           </Paper>
-        </Grid>
+        </Box>
 
-        <Grid item xs={12} md={6}>
+        <Box sx={{ flex: 1 }}>
           <Paper sx={{ p: 2 }}>
             <Typography variant="h6" gutterBottom>
               Safety Features
@@ -198,14 +205,14 @@ export default function Dashboard() {
                   </ListItemIcon>
                   <ListItemText
                     primary={key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                    secondary={value}
+                    secondary={String(value)}
                   />
                 </ListItem>
               ))}
             </List>
           </Paper>
-        </Grid>
-      </Grid>
+        </Box>
+      </Box>
     </Box>
   );
 }
