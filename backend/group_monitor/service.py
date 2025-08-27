@@ -49,7 +49,7 @@ async def execute_group_monitor_job(job: Job, db: Session):
                             "timestamp": message.date.isoformat() if message.date else ""
                         })
 
-        filename = f"monitored_messages_job_{job.id}.csv"
+        filename = f"/app/job_results/monitored_messages_job_{job.id}.csv"
         with open(filename, 'w', encoding='utf-8', newline='') as f:
             writer = csv.DictWriter(f, fieldnames=["group", "user", "text", "timestamp"])
             writer.writeheader()

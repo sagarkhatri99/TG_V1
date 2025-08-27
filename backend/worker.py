@@ -5,6 +5,8 @@ from database import get_db
 from models import Job
 from group_monitor.service import execute_group_monitor_job
 from auto_promo.service import execute_auto_promo_job
+from mass_dm_account.service import execute_mass_dm_account_job
+from mass_dm_bot.service import execute_mass_dm_bot_job
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -12,6 +14,8 @@ logger = logging.getLogger(__name__)
 JOB_DISPATCHER = {
     'group_monitor': execute_group_monitor_job,
     'auto_promo': execute_auto_promo_job,
+    'mass_dm_account': execute_mass_dm_account_job,
+    'mass_dm_bot': execute_mass_dm_bot_job,
 }
 
 async def main():

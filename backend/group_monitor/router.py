@@ -95,7 +95,7 @@ def download_csv(job_id: int, db: Session = Depends(get_db)):
     if job.status != 'completed':
         raise HTTPException(status_code=400, detail="Job is not complete.")
 
-    filename = f"monitored_messages_job_{job_id}.csv"
+    filename = f"/app/job_results/monitored_messages_job_{job_id}.csv"
 
     def file_iterator(file_path, chunk_size=8192):
         try:

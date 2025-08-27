@@ -7,11 +7,17 @@ from pydantic import BaseModel
 
 router = APIRouter()
 
+from typing import Optional
+
 class AutoPromoRequest(BaseModel):
     account_id: int
     target_group: str
     promo_message: str
     interval_seconds: int
+    use_random_interval: bool = False
+    min_interval: Optional[int] = None
+    max_interval: Optional[int] = None
+    stop_after_hours: Optional[int] = None
 
 @router.post("/create-job")
 async def create_auto_promo_job(request: AutoPromoRequest, db: Session = Depends(get_db)):
@@ -19,10 +25,17 @@ async def create_auto_promo_job(request: AutoPromoRequest, db: Session = Depends
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
 
+    if request.use_random_interval and (request.min_interval is None or request.max_interval is None):
+        raise HTTPException(status_code=400, detail="min_interval and max_interval are required for random interval.")
+
     job_config = {
         "target_group": request.target_group,
         "promo_message": request.promo_message,
-        "interval_seconds": request.interval_seconds
+        "interval_seconds": request.interval_seconds,
+        "use_random_interval": request.use_random_interval,
+        "min_interval": request.min_interval,
+        "max_interval": request.max_interval,
+        "stop_after_hours": request.stop_after_hours,
     }
 
     new_job = Job(

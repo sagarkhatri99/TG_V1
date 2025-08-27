@@ -1,41 +1,55 @@
-# mass_dm_account/router.py
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form
+from sqlalchemy.orm import Session
+from models import Job, TelegramAccount
+from database import get_db
+import json
 from pydantic import BaseModel
-from .service import start_dm_auth, send_mass_dm_account_with_otp
-import io
+from typing import Optional
+import shutil
 
 router = APIRouter()
 
-class StartDMAuthRequest(BaseModel):
-    api_id: int
-    api_hash: str
-    phone_number: str
+class MassDMAccountRequest(BaseModel):
+    account_id: int
+    message: str
+    stop_after_hours: Optional[int] = None
 
-@router.post("/start-auth")
-async def start_auth(request: StartDMAuthRequest):
-    try:
-        await start_dm_auth(request.api_id, request.api_hash, request.phone_number)
-        return {"success": True, "message": "OTP sent to your phone"}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-@router.post("/send")
-async def send_dm_with_otp(
-    api_id: int = Form(...),
-    api_hash: str = Form(...),
-    phone_number: str = Form(...),
-    otp: str = Form(...),
+@router.post("/create-job")
+async def create_mass_dm_account_job(
+    account_id: int = Form(...),
     message: str = Form(...),
-    file: UploadFile = File(...)
+    stop_after_hours: Optional[int] = Form(None),
+    csv_file: UploadFile = File(...),
+    db: Session = Depends(get_db)
 ):
-    try:
-        # Convert UploadFile to file-like object for pandas
-        content = await file.read()
-        csv_file = io.StringIO(content.decode('utf-8'))
-        
-        result = await send_mass_dm_account_with_otp(
-            api_id, api_hash, phone_number, otp, csv_file, message
-        )
-        return {"message": result}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    # Save the uploaded CSV file to a temporary location
+    temp_file_path = f"/app/job_results/temp_{csv_file.filename}"
+    with open(temp_file_path, "wb") as buffer:
+        shutil.copyfileobj(csv_file.file, buffer)
+
+    job_config = {
+        "message": message,
+        "stop_after_hours": stop_after_hours,
+        "csv_file_path": temp_file_path,
+    }
+
+    new_job = Job(
+        telegram_account_id=account_id,
+        job_type='mass_dm_account',
+        config=json.dumps(job_config),
+        status='pending'
+    )
+    db.add(new_job)
+    db.commit()
+    db.refresh(new_job)
+    db.close()
+
+    return {"job_id": new_job.id, "message": "Mass DM Account job created successfully."}
+
+# Old endpoints deprecated
+# from .service import start_dm_auth, send_mass_dm_account_with_otp
+# ...

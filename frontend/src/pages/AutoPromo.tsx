@@ -28,6 +28,10 @@ export default function AutoPromo() {
     target_group: '',
     promo_message: '',
     interval_seconds: '3600',
+    use_random_interval: false,
+    min_interval: '60',
+    max_interval: '300',
+    stop_after_hours: '',
   });
 
   useEffect(() => {
@@ -46,12 +50,17 @@ export default function AutoPromo() {
     setLoading(true);
     setAlert(null);
     try {
-      const response = await api.post('/api/auto_promo/create-job', {
+      const payload = {
         account_id: parseInt(formData.account_id),
         target_group: formData.target_group,
         promo_message: formData.promo_message,
         interval_seconds: parseInt(formData.interval_seconds),
-      });
+        use_random_interval: formData.use_random_interval,
+        min_interval: formData.use_random_interval ? parseInt(formData.min_interval) : null,
+        max_interval: formData.use_random_interval ? parseInt(formData.max_interval) : null,
+        stop_after_hours: formData.stop_after_hours ? parseInt(formData.stop_after_hours) : null,
+      };
+      const response = await api.post('/api/auto_promo/create-job', payload);
       setAlert({ type: 'success', message: response.data.message || 'Job created successfully!' });
       // Optionally reset form
       setFormData({ ...formData, target_group: '', promo_message: '' });
@@ -119,6 +128,35 @@ export default function AutoPromo() {
               />
             </Box>
             <Box>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={formData.use_random_interval}
+                    onChange={(e) => setFormData({ ...formData, use_random_interval: e.target.checked })}
+                  />
+                }
+                label="Use Random Interval"
+              />
+            </Box>
+
+            {formData.use_random_interval ? (
+              <Box sx={{ display: 'flex', gap: 2 }}>
+                <TextField
+                  fullWidth
+                  label="Min Interval (s)"
+                  type="number"
+                  value={formData.min_interval}
+                  onChange={(e) => setFormData({ ...formData, min_interval: e.target.value })}
+                />
+                <TextField
+                  fullWidth
+                  label="Max Interval (s)"
+                  type="number"
+                  value={formData.max_interval}
+                  onChange={(e) => setFormData({ ...formData, max_interval: e.target.value })}
+                />
+              </Box>
+            ) : (
               <TextField
                 fullWidth
                 label="Interval"
@@ -128,6 +166,17 @@ export default function AutoPromo() {
                 InputProps={{
                   endAdornment: <InputAdornment position="end">seconds</InputAdornment>,
                 }}
+              />
+            )}
+
+            <Box>
+              <TextField
+                fullWidth
+                label="Stop After (hours)"
+                type="number"
+                placeholder="Optional"
+                value={formData.stop_after_hours}
+                onChange={(e) => setFormData({ ...formData, stop_after_hours: e.target.value })}
                 sx={{ mb: 3 }}
               />
             </Box>
