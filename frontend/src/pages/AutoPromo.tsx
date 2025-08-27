@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -9,77 +9,58 @@ import {
   Alert,
   CircularProgress,
   InputAdornment,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from '@mui/material';
 import { Campaign as CampaignIcon } from '@mui/icons-material';
-import api, { endpoints } from '../api';
-
+import api, { endpoints } from '/src/api/Index';
+import { TelegramAccount } from '/src/Types/Index';
 
 export default function AutoPromo() {
   const [loading, setLoading] = useState(false);
-  const [otpSent, setOtpSent] = useState(false);
   const [alert, setAlert] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+  const [accounts, setAccounts] = useState<TelegramAccount[]>([]);
   
   const [formData, setFormData] = useState({
-    api_id: '',
-    api_hash: '',
-    phone_number: '',
-    otp: '',
+    account_id: '',
     target_group: '',
     promo_message: '',
     interval_seconds: '3600',
   });
 
+  useEffect(() => {
+    const fetchAccounts = async () => {
+      try {
+        const response = await api.get(endpoints.accounts.list);
+        setAccounts(response.data.accounts);
+      } catch (error) {
+        setAlert({ type: 'error', message: 'Failed to fetch accounts.' });
+      }
+    };
+    fetchAccounts();
+  }, []);
 
-  const handleSendOTP = async () => {
+  const handleCreateJob = async () => {
     setLoading(true);
+    setAlert(null);
     try {
-      const formDataToSend = new FormData();
-      formDataToSend.append('api_id', formData.api_id);
-      formDataToSend.append('api_hash', formData.api_hash);
-      formDataToSend.append('phone_number', formData.phone_number);
-
-
-      await api.post(endpoints.autoPromo.startAuth, formDataToSend, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+      const response = await api.post('/api/auto_promo/create-job', {
+        account_id: parseInt(formData.account_id),
+        target_group: formData.target_group,
+        promo_message: formData.promo_message,
+        interval_seconds: parseInt(formData.interval_seconds),
       });
-
-
-      setAlert({ type: 'success', message: 'OTP sent to your phone!' });
-      setOtpSent(true);
+      setAlert({ type: 'success', message: response.data.message || 'Job created successfully!' });
+      // Optionally reset form
+      setFormData({ ...formData, target_group: '', promo_message: '' });
     } catch (error: any) {
-      setAlert({ type: 'error', message: error.response?.data?.detail || 'Failed to send OTP' });
+      setAlert({ type: 'error', message: error.response?.data?.detail || 'Failed to create job' });
     } finally {
       setLoading(false);
     }
   };
-
-
-  const handleStartPromo = async () => {
-    setLoading(true);
-    try {
-      const formDataToSend = new FormData();
-      formDataToSend.append('api_id', formData.api_id);
-      formDataToSend.append('api_hash', formData.api_hash);
-      formDataToSend.append('phone_number', formData.phone_number);
-      formDataToSend.append('otp', formData.otp);
-      formDataToSend.append('target_group', formData.target_group);
-      formDataToSend.append('promo_message', formData.promo_message);
-      formDataToSend.append('interval_seconds', formData.interval_seconds);
-
-
-      const response = await api.post(endpoints.autoPromo.start, formDataToSend, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-
-
-      setAlert({ type: 'success', message: response.data || 'Auto promo started successfully!' });
-    } catch (error: any) {
-      setAlert({ type: 'error', message: error.response?.data?.detail || 'Failed to start auto promo' });
-    } finally {
-      setLoading(false);
-    }
-  };
-
 
   return (
     <Box>
@@ -90,123 +71,77 @@ export default function AutoPromo() {
         Automatically send promotional messages to target groups at specified intervals.
       </Typography>
 
-
       {alert && (
         <Alert severity={alert.type} onClose={() => setAlert(null)} sx={{ mb: 3 }}>
           {alert.message}
         </Alert>
       )}
 
-
       <Card sx={{ mt: 3 }}>
         <CardContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 3 }}>
-              <Box sx={{ flex: 1 }}>
-                <TextField
-                  fullWidth
-                  label="API ID"
-                  type="number"
-                  value={formData.api_id}
-                  onChange={(e) => setFormData({ ...formData, api_id: e.target.value })}
-                  disabled={otpSent}
-                  sx={{ mb: 2 }}
-                />
-              </Box>
-              <Box sx={{ flex: 1 }}>
-                <TextField
-                  fullWidth
-                  label="API Hash"
-                  value={formData.api_hash}
-                  onChange={(e) => setFormData({ ...formData, api_hash: e.target.value })}
-                  disabled={otpSent}
-                  sx={{ mb: 2 }}
-                />
-              </Box>
+            <FormControl fullWidth>
+              <InputLabel id="account-select-label">Select Account</InputLabel>
+              <Select
+                labelId="account-select-label"
+                value={formData.account_id}
+                label="Select Account"
+                onChange={(e) => setFormData({ ...formData, account_id: e.target.value })}
+              >
+                {accounts.map((account) => (
+                  <MenuItem key={account.id} value={account.id}>
+                    {account.nickname} ({account.phone_number})
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <Box>
+              <TextField
+                fullWidth
+                label="Target Group"
+                placeholder="@groupname or https://t.me/groupname"
+                value={formData.target_group}
+                onChange={(e) => setFormData({ ...formData, target_group: e.target.value })}
+                sx={{ mb: 2 }}
+              />
             </Box>
             <Box>
               <TextField
                 fullWidth
-                label="Phone Number"
-                placeholder="+1234567890"
-                value={formData.phone_number}
-                onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
-                disabled={otpSent}
+                multiline
+                rows={4}
+                label="Promotional Message"
+                placeholder="Your promotional message here..."
+                value={formData.promo_message}
+                onChange={(e) => setFormData({ ...formData, promo_message: e.target.value })}
                 sx={{ mb: 2 }}
               />
             </Box>
-
-
-            {!otpSent ? (
-              <Box>
-                <Button
-                  variant="contained"
-                  onClick={handleSendOTP}
-                  disabled={loading || !formData.api_id || !formData.api_hash || !formData.phone_number}
-                  fullWidth
-                >
-                  {loading ? <CircularProgress size={24} /> : 'Send OTP'}
-                </Button>
-              </Box>
-            ) : (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                <Box>
-                  <TextField
-                    fullWidth
-                    label="OTP Code"
-                    value={formData.otp}
-                    onChange={(e) => setFormData({ ...formData, otp: e.target.value })}
-                    sx={{ mb: 2 }}
-                  />
-                </Box>
-                <Box>
-                  <TextField
-                    fullWidth
-                    label="Target Group"
-                    placeholder="@groupname or https://t.me/groupname"
-                    value={formData.target_group}
-                    onChange={(e) => setFormData({ ...formData, target_group: e.target.value })}
-                    sx={{ mb: 2 }}
-                  />
-                </Box>
-                <Box>
-                  <TextField
-                    fullWidth
-                    multiline
-                    rows={4}
-                    label="Promotional Message"
-                    placeholder="Your promotional message here..."
-                    value={formData.promo_message}
-                    onChange={(e) => setFormData({ ...formData, promo_message: e.target.value })}
-                    sx={{ mb: 2 }}
-                  />
-                </Box>
-                <Box>
-                  <TextField
-                    fullWidth
-                    label="Interval"
-                    type="number"
-                    value={formData.interval_seconds}
-                    onChange={(e) => setFormData({ ...formData, interval_seconds: e.target.value })}
-                    InputProps={{
-                      endAdornment: <InputAdornment position="end">seconds</InputAdornment>,
-                    }}
-                    sx={{ mb: 3 }}
-                  />
-                </Box>
-                <Box>
-                  <Button
-                    variant="contained"
-                    startIcon={<CampaignIcon />}
-                    onClick={handleStartPromo}
-                    disabled={loading || !formData.otp || !formData.target_group || !formData.promo_message}
-                    fullWidth
-                  >
-                    {loading ? <CircularProgress size={24} /> : 'Start Auto Promo'}
-                  </Button>
-                </Box>
-              </Box>
-            )}
+            <Box>
+              <TextField
+                fullWidth
+                label="Interval"
+                type="number"
+                value={formData.interval_seconds}
+                onChange={(e) => setFormData({ ...formData, interval_seconds: e.target.value })}
+                InputProps={{
+                  endAdornment: <InputAdornment position="end">seconds</InputAdornment>,
+                }}
+                sx={{ mb: 3 }}
+              />
+            </Box>
+            <Box>
+              <Button
+                variant="contained"
+                startIcon={<CampaignIcon />}
+                onClick={handleCreateJob}
+                disabled={loading || !formData.account_id || !formData.target_group || !formData.promo_message}
+                fullWidth
+              >
+                {loading ? <CircularProgress size={24} /> : 'Create Auto Promo Job'}
+              </Button>
+            </Box>
           </Box>
         </CardContent>
       </Card>

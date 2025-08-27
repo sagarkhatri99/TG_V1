@@ -1,58 +1,101 @@
-# group_monitor/router.py
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Depends, Query
+from sqlalchemy.orm import Session
+from models import Job, TelegramAccount
+from database import get_db
+import json
 from pydantic import BaseModel
 from typing import List, Optional
 from fastapi.responses import StreamingResponse
-import csv
-import io
-import datetime
-from .service import start_monitor_auth, verify_monitor_otp_and_monitor
 
 router = APIRouter()
 
-class StartMonitorAuthRequest(BaseModel):
-    api_id: int
-    api_hash: str
-    phone_number: str
-
-class VerifyMonitorRequest(BaseModel):
-    api_id: int
-    api_hash: str
-    phone_number: str
-    code: str
+class GroupMonitorRequest(BaseModel):
+    account_id: int
     group_usernames: List[str]
     keywords: List[str]
     monitored_users: List[str]
-    limit: Optional[int] = 100
+    limit: int = 100
 
-@router.post("/start-auth")
-async def start_auth(request: StartMonitorAuthRequest):
-    try:
-        await start_monitor_auth(request.api_id, request.api_hash, request.phone_number)
-        return {"success": True, "message": "OTP sent to your phone"}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+@router.post("/create-job")
+async def create_group_monitor_job(request: GroupMonitorRequest, db: Session = Depends(get_db)):
+    account = db.query(TelegramAccount).filter(TelegramAccount.id == request.account_id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
 
-@router.post("/verify-monitor")
-async def verify_monitor(request: VerifyMonitorRequest):
-    try:
-        result = await verify_monitor_otp_and_monitor(
-            request.api_id,
-            request.api_hash,
-            request.phone_number,
-            request.code,
-            request.group_usernames,
-            request.keywords,
-            request.monitored_users,
-            request.limit or 100
-        )
-        return {"message": result}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    job_config = {
+        "group_usernames": request.group_usernames,
+        "keywords": request.keywords,
+        "monitored_users": request.monitored_users,
+        "limit": request.limit
+    }
+
+    new_job = Job(
+        telegram_account_id=request.account_id,
+        job_type='group_monitor',
+        config=json.dumps(job_config),
+        status='pending'
+    )
+    db.add(new_job)
+    db.commit()
+    db.refresh(new_job)
+    db.close()
+
+    return {"job_id": new_job.id, "message": "Group monitor job created successfully."}
+
+# The old endpoints are now deprecated.
+# I am commenting them out for now, in case I need to refer to them.
+
+# from .service import start_monitor_auth, verify_monitor_otp_and_monitor
+# class StartMonitorAuthRequest(BaseModel):
+#     api_id: int
+#     api_hash: str
+#     phone_number: str
+
+# class VerifyMonitorRequest(BaseModel):
+#     api_id: int
+#     api_hash: str
+#     phone_number: str
+#     code: str
+#     group_usernames: List[str]
+#     keywords: List[str]
+#     monitored_users: List[str]
+#     limit: Optional[int] = 100
+
+# @router.post("/start-auth")
+# async def start_auth(request: StartMonitorAuthRequest):
+#     try:
+#         await start_monitor_auth(request.api_id, request.api_hash, request.phone_number)
+#         return {"success": True, "message": "OTP sent to your phone"}
+#     except Exception as e:
+#         raise HTTPException(status_code=400, detail=str(e))
+
+# @router.post("/verify-monitor")
+# async def verify_monitor(request: VerifyMonitorRequest):
+#     try:
+#         result = await verify_monitor_otp_and_monitor(
+#             request.api_id,
+#             request.api_hash,
+#             request.phone_number,
+#             request.code,
+#             request.group_usernames,
+#             request.keywords,
+#             request.monitored_users,
+#             request.limit or 100
+#         )
+#         return {"message": result}
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/download")
-def download_csv(phone_number: str = Query(...)):
-    filename = f"monitored_messages_{phone_number.replace('+', '')}.csv"
+def download_csv(job_id: int, db: Session = Depends(get_db)):
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.status != 'completed':
+        raise HTTPException(status_code=400, detail="Job is not complete.")
+
+    filename = f"monitored_messages_job_{job_id}.csv"
 
     def file_iterator(file_path, chunk_size=8192):
         try:
@@ -63,7 +106,6 @@ def download_csv(phone_number: str = Query(...)):
                         break
                     yield chunk
         except FileNotFoundError:
-            # This allows the outer try-except to handle the 404
             raise
 
     try:
@@ -73,4 +115,4 @@ def download_csv(phone_number: str = Query(...)):
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )
     except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="File not found")
+        raise HTTPException(status_code=404, detail="Result file not found.")

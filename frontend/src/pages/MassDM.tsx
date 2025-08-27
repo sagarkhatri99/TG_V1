@@ -14,7 +14,7 @@ import {
 } from '@mui/material';
 
 import { Send as SendIcon, Upload as UploadIcon } from '@mui/icons-material';
-import api, { endpoints } from '../api';
+import api, { endpoints } from '/src/api/Index';
 
 
 interface TabPanelProps {

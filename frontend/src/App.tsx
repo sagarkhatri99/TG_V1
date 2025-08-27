@@ -2,18 +2,19 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
 import { CssBaseline } from '@mui/material';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import theme from './theme';
-import Layout from './components/layout/Layout';
+import theme from '/src/theme/Index';
+import Layout from '/src/components/layout/Layout';
 
 // Pages
-import Dashboard from './pages/Dashboard';
-import Accounts from './pages/Accounts';
-import ScrapeUsers from './pages/ScrapeUsers';
-import MonitorGroups from './pages/MonitorGroups';
-import MassDM from './pages/MassDM';
-import AutoPromo from './pages/AutoPromo';
-import Settings from './pages/Settings';
-import Help from './pages/Help';
+import Dashboard from '/src/pages/Dashboard';
+import Accounts from '/src/pages/Accounts';
+import ScrapeUsers from '/src/pages/ScrapeUsers';
+import MonitorGroups from '/src/pages/MonitorGroups';
+import MassDM from '/src/pages/MassDM';
+import AutoPromo from '/src/pages/AutoPromo';
+import Settings from '/src/pages/Settings';
+import Help from '/src/pages/Help';
+import Jobs from '/src/pages/Jobs';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -33,6 +34,7 @@ function App() {
           <Layout>
             <Routes>
               <Route path="/" element={<Dashboard />} />
+              <Route path="/jobs" element={<Jobs />} />
               <Route path="/accounts" element={<Accounts />} />
               <Route path="/scrape" element={<ScrapeUsers />} />
               <Route path="/monitor" element={<MonitorGroups />} />
