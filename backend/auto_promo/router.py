@@ -1,38 +1,35 @@
 # auto_promo/router.py
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Form
 from .service import start_auto_promo_auth, verify_and_start_promo
 
 router = APIRouter()
 
-class AutoPromoAuthRequest(BaseModel):
-    api_id: int
-    api_hash: str
-    phone_number: str
-
-class AutoPromoStartRequest(BaseModel):
-    api_id: int
-    api_hash: str
-    phone_number: str
-    otp: str
-    target_group: str
-    promo_message: str
-    interval_seconds: int
-
 @router.post("/start-auth")
-async def start_auth(req: AutoPromoAuthRequest):
+async def start_auth(
+    api_id: int = Form(...),
+    api_hash: str = Form(...),
+    phone_number: str = Form(...)
+):
     try:
-        await start_auto_promo_auth(req.api_id, req.api_hash, req.phone_number)
+        await start_auto_promo_auth(api_id, api_hash, phone_number)
         return {"success": True, "message": "OTP sent to your phone"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/start")
-async def start_promo(req: AutoPromoStartRequest):
+async def start_promo(
+    api_id: int = Form(...),
+    api_hash: str = Form(...),
+    phone_number: str = Form(...),
+    otp: str = Form(...),
+    target_group: str = Form(...),
+    promo_message: str = Form(...),
+    interval_seconds: int = Form(...)
+):
     try:
         result = await verify_and_start_promo(
-            req.api_id, req.api_hash, req.phone_number, req.otp,
-            req.target_group, req.promo_message, req.interval_seconds
+            api_id, api_hash, phone_number, otp,
+            target_group, promo_message, interval_seconds
         )
         return {"message": result}
     except Exception as e:

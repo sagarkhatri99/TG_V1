@@ -52,16 +52,23 @@ async def verify_monitor(request: VerifyMonitorRequest):
 
 @router.get("/download")
 def download_csv(phone_number: str = Query(...)):
-    filename = f"monitored_messages_{phone_number}.csv"
+    filename = f"monitored_messages_{phone_number.replace('+', '')}.csv"
+
+    def file_iterator(file_path, chunk_size=8192):
+        try:
+            with open(file_path, "rb") as f:
+                while True:
+                    chunk = f.read(chunk_size)
+                    if not chunk:
+                        break
+                    yield chunk
+        except FileNotFoundError:
+            # This allows the outer try-except to handle the 404
+            raise
+
     try:
-        with open(filename, encoding="utf-8") as f:
-            content = f.read()
-        
-        def iter_csv():
-            yield content
-            
         return StreamingResponse(
-            iter_csv(),
+            file_iterator(filename),
             media_type="text/csv",
             headers={"Content-Disposition": f"attachment; filename={filename}"}
         )

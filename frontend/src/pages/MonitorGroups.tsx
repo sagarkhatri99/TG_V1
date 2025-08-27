@@ -118,8 +118,8 @@ export default function MonitorGroups() {
 
   const handleDownload = () => {
     const cleanPhone = formData.phone_number.replace('+', '');
-    const downloadUrl = `${endpoints.monitoring.download}?phone_number=${cleanPhone}`;
-    window.open(`http://localhost:8000${downloadUrl}`, '_blank');
+    const downloadUrl = `/api/group-monitor/download?phone_number=${cleanPhone}`;
+    window.open(downloadUrl, '_blank');
   };
 
 
