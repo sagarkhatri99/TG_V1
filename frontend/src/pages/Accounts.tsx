@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -19,7 +19,6 @@ import {
   DialogContent,
   DialogActions,
   TextField,
-  Grid,
   Alert,
   CircularProgress,
   Tooltip,
@@ -33,6 +32,7 @@ import {
 import { format } from 'date-fns';
 import api, { endpoints } from '../api';
 import type { TelegramAccount, CreateAccountRequest } from '../types';
+
 
 export default function Accounts() {
   const [accounts, setAccounts] = useState<TelegramAccount[]>([]);
@@ -50,9 +50,11 @@ export default function Accounts() {
   });
   const [otpCode, setOtpCode] = useState('');
 
+
   useEffect(() => {
     fetchAccounts();
   }, []);
+
 
   const fetchAccounts = async () => {
     try {
@@ -65,6 +67,7 @@ export default function Accounts() {
     }
   };
 
+
   const handleCreateAccount = async () => {
     try {
       const formData = new FormData();
@@ -72,9 +75,11 @@ export default function Accounts() {
         formData.append(key, value.toString());
       });
 
+
       const response = await api.post(endpoints.accounts.create, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
+
 
       setAlert({ type: 'success', message: 'Account created. Please verify with OTP.' });
       setCreateDialogOpen(false);
@@ -101,16 +106,20 @@ export default function Accounts() {
     }
   };
 
+
   const handleVerifyAccount = async () => {
     if (!selectedAccount) return;
+
 
     try {
       const formData = new FormData();
       formData.append('otp_code', otpCode);
 
+
       await api.post(endpoints.accounts.verify(selectedAccount.id), formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
+
 
       setAlert({ type: 'success', message: 'Account verified successfully!' });
       setVerifyDialogOpen(false);
@@ -120,6 +129,7 @@ export default function Accounts() {
       setAlert({ type: 'error', message: error.response?.data?.detail || 'Verification failed' });
     }
   };
+
 
   const handlePauseResume = async (account: TelegramAccount) => {
     try {
@@ -138,6 +148,7 @@ export default function Accounts() {
     }
   };
 
+
   const handleTestConnection = async (account: TelegramAccount) => {
     try {
       const response = await api.post(endpoints.accounts.test(account.id));
@@ -150,6 +161,7 @@ export default function Accounts() {
     }
   };
 
+
   const getStatusColor = (status: string): any => {
     switch (status) {
       case 'active': return 'success';
@@ -160,11 +172,13 @@ export default function Accounts() {
     }
   };
 
+
   const getRiskColor = (risk: number): any => {
     if (risk < 0.3) return 'success';
     if (risk < 0.7) return 'warning';
     return 'error';
   };
+
 
   if (loading) {
     return (
@@ -173,6 +187,7 @@ export default function Accounts() {
       </Box>
     );
   }
+
 
   return (
     <Box>
@@ -187,6 +202,7 @@ export default function Accounts() {
         </Button>
       </Box>
 
+
       {alert && (
         <Alert 
           severity={alert.type} 
@@ -196,6 +212,7 @@ export default function Accounts() {
           {alert.message}
         </Alert>
       )}
+
 
       <Card>
         <CardContent>
@@ -283,30 +300,33 @@ export default function Accounts() {
         </CardContent>
       </Card>
 
+
       {/* Create Account Dialog */}
       <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Add New Telegram Account</DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2 }}>
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="API ID"
-                  type="number"
-                  value={createForm.api_id || ''}
-                  onChange={(e) => setCreateForm({ ...createForm, api_id: parseInt(e.target.value) || 0 })}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="API Hash"
-                  value={createForm.api_hash}
-                  onChange={(e) => setCreateForm({ ...createForm, api_hash: e.target.value })}
-                />
-              </Grid>
-              <Grid item xs={12}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2 }}>
+                <Box sx={{ flex: 1 }}>
+                  <TextField
+                    fullWidth
+                    label="API ID"
+                    type="number"
+                    value={createForm.api_id || ''}
+                    onChange={(e) => setCreateForm({ ...createForm, api_id: parseInt(e.target.value) || 0 })}
+                  />
+                </Box>
+                <Box sx={{ flex: 1 }}>
+                  <TextField
+                    fullWidth
+                    label="API Hash"
+                    value={createForm.api_hash}
+                    onChange={(e) => setCreateForm({ ...createForm, api_hash: e.target.value })}
+                  />
+                </Box>
+              </Box>
+              <Box>
                 <TextField
                   fullWidth
                   label="Phone Number"
@@ -314,16 +334,16 @@ export default function Accounts() {
                   value={createForm.phone_number}
                   onChange={(e) => setCreateForm({ ...createForm, phone_number: e.target.value })}
                 />
-              </Grid>
-              <Grid item xs={12}>
+              </Box>
+              <Box>
                 <TextField
                   fullWidth
                   label="Nickname"
                   value={createForm.nickname}
                   onChange={(e) => setCreateForm({ ...createForm, nickname: e.target.value })}
                 />
-              </Grid>
-            </Grid>
+              </Box>
+            </Box>
           </Box>
         </DialogContent>
         <DialogActions>
@@ -331,6 +351,7 @@ export default function Accounts() {
           <Button onClick={handleCreateAccount} variant="contained">Create Account</Button>
         </DialogActions>
       </Dialog>
+
 
       {/* Verify Account Dialog */}
       <Dialog open={verifyDialogOpen} onClose={() => setVerifyDialogOpen(false)}>

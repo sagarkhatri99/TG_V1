@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   Box,
   Typography,
@@ -6,7 +6,6 @@ import {
   CardContent,
   TextField,
   Button,
-  Grid,  // Add this
   Alert,
   CircularProgress,
   Tabs,
@@ -17,11 +16,13 @@ import {
 import { Send as SendIcon, Upload as UploadIcon } from '@mui/icons-material';
 import api, { endpoints } from '../api';
 
+
 interface TabPanelProps {
   children?: React.ReactNode;
   index: number;
   value: number;
 }
+
 
 function TabPanel({ children, value, index }: TabPanelProps) {
   return (
@@ -30,6 +31,7 @@ function TabPanel({ children, value, index }: TabPanelProps) {
     </div>
   );
 }
+
 
 export default function MassDM() {
   const [tabValue, setTabValue] = useState(0);
@@ -43,6 +45,7 @@ export default function MassDM() {
     file: null as File | null,
   });
 
+
   // Account DM state
   const [accountForm, setAccountForm] = useState({
     api_id: '',
@@ -54,11 +57,13 @@ export default function MassDM() {
   });
   const [otpSent, setOtpSent] = useState(false);
 
+
   const handleBotDM = async () => {
     if (!botForm.file) {
       setAlert({ type: 'error', message: 'Please upload a CSV file with chat IDs' });
       return;
     }
+
 
     setLoading(true);
     try {
@@ -67,9 +72,11 @@ export default function MassDM() {
       formData.append('message', botForm.message);
       formData.append('file', botForm.file);
 
+
       const response = await api.post(endpoints.massDM.bot, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
+
 
       setAlert({ type: 'success', message: response.data.message });
     } catch (error: any) {
@@ -78,6 +85,7 @@ export default function MassDM() {
       setLoading(false);
     }
   };
+
 
   const handleSendOTP = async () => {
     setLoading(true);
@@ -96,11 +104,13 @@ export default function MassDM() {
     }
   };
 
+
   const handleAccountDM = async () => {
     if (!accountForm.file) {
       setAlert({ type: 'error', message: 'Please upload a CSV file with user IDs or usernames' });
       return;
     }
+
 
     setLoading(true);
     try {
@@ -112,9 +122,11 @@ export default function MassDM() {
       formData.append('message', accountForm.message);
       formData.append('file', accountForm.file);
 
+
       const response = await api.post(endpoints.massDM.account.send, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
+
 
       setAlert({ type: 'success', message: response.data.message });
     } catch (error: any) {
@@ -123,6 +135,7 @@ export default function MassDM() {
       setLoading(false);
     }
   };
+
 
   return (
     <Box>
@@ -133,11 +146,13 @@ export default function MassDM() {
         Send bulk direct messages using either a Telegram bot or your personal account.
       </Typography>
 
+
       {alert && (
         <Alert severity={alert.type} onClose={() => setAlert(null)} sx={{ mb: 3 }}>
           {alert.message}
         </Alert>
       )}
+
 
       <Card sx={{ mt: 3 }}>
         <CardContent>
@@ -146,14 +161,15 @@ export default function MassDM() {
             <Tab label="Via Account" />
           </Tabs>
 
+
           <TabPanel value={tabValue} index={0}>
             <Typography variant="body2" color="text.secondary" gutterBottom>
               Use a Telegram bot to send messages. Requires bot token and CSV with chat_id column.
             </Typography>
             <Divider sx={{ my: 2 }} />
 
-            <Grid container spacing={3}>
-              <Grid item xs={12}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <Box>
                 <TextField
                   fullWidth
                   label="Bot Token"
@@ -162,9 +178,9 @@ export default function MassDM() {
                   onChange={(e) => setBotForm({ ...botForm, bot_token: e.target.value })}
                   sx={{ mb: 2 }}
                 />
-              </Grid>
+              </Box>
 
-              <Grid item xs={12}>
+              <Box>
                 <TextField
                   fullWidth
                   multiline
@@ -175,9 +191,9 @@ export default function MassDM() {
                   onChange={(e) => setBotForm({ ...botForm, message: e.target.value })}
                   sx={{ mb: 2 }}
                 />
-              </Grid>
+              </Box>
 
-              <Grid item xs={12}>
+              <Box>
                 <Button
                   variant="outlined"
                   component="label"
@@ -197,9 +213,9 @@ export default function MassDM() {
                     Selected: {botForm.file.name}
                   </Typography>
                 )}
-              </Grid>
+              </Box>
 
-              <Grid item xs={12}>
+              <Box>
                 <Button
                   variant="contained"
                   startIcon={<SendIcon />}
@@ -209,9 +225,10 @@ export default function MassDM() {
                 >
                   {loading ? <CircularProgress size={24} /> : 'Send Messages via Bot'}
                 </Button>
-              </Grid>
-            </Grid>
+              </Box>
+            </Box>
           </TabPanel>
+
 
           <TabPanel value={tabValue} index={1}>
             <Typography variant="body2" color="text.secondary" gutterBottom>
@@ -219,27 +236,29 @@ export default function MassDM() {
             </Typography>
             <Divider sx={{ my: 2 }} />
 
-            <Grid container spacing={3}>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
-                  label="API ID"
-                  type="number"
-                  value={accountForm.api_id}
-                  onChange={(e) => setAccountForm({ ...accountForm, api_id: e.target.value })}
-                  sx={{ mb: 2 }}
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
-                  label="API Hash"
-                  value={accountForm.api_hash}
-                  onChange={(e) => setAccountForm({ ...accountForm, api_hash: e.target.value })}
-                  sx={{ mb: 2 }}
-                />
-              </Grid>
-              <Grid item xs={12}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 3 }}>
+                <Box sx={{ flex: 1 }}>
+                  <TextField
+                    fullWidth
+                    label="API ID"
+                    type="number"
+                    value={accountForm.api_id}
+                    onChange={(e) => setAccountForm({ ...accountForm, api_id: e.target.value })}
+                    sx={{ mb: 2 }}
+                  />
+                </Box>
+                <Box sx={{ flex: 1 }}>
+                  <TextField
+                    fullWidth
+                    label="API Hash"
+                    value={accountForm.api_hash}
+                    onChange={(e) => setAccountForm({ ...accountForm, api_hash: e.target.value })}
+                    sx={{ mb: 2 }}
+                  />
+                </Box>
+              </Box>
+              <Box>
                 <TextField
                   fullWidth
                   label="Phone Number"
@@ -248,10 +267,10 @@ export default function MassDM() {
                   onChange={(e) => setAccountForm({ ...accountForm, phone_number: e.target.value })}
                   sx={{ mb: 2 }}
                 />
-              </Grid>
+              </Box>
 
               {!otpSent ? (
-                <Grid item xs={12}>
+                <Box>
                   <Button
                     variant="outlined"
                     onClick={handleSendOTP}
@@ -260,10 +279,10 @@ export default function MassDM() {
                   >
                     {loading ? <CircularProgress size={24} /> : 'Send OTP'}
                   </Button>
-                </Grid>
+                </Box>
               ) : (
-                <>
-                  <Grid item xs={12}>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <Box>
                     <TextField
                       fullWidth
                       label="OTP Code"
@@ -271,9 +290,9 @@ export default function MassDM() {
                       onChange={(e) => setAccountForm({ ...accountForm, otp: e.target.value })}
                       sx={{ mb: 2 }}
                     />
-                  </Grid>
+                  </Box>
 
-                  <Grid item xs={12}>
+                  <Box>
                     <TextField
                       fullWidth
                       multiline
@@ -284,9 +303,9 @@ export default function MassDM() {
                       onChange={(e) => setAccountForm({ ...accountForm, message: e.target.value })}
                       sx={{ mb: 2 }}
                     />
-                  </Grid>
+                  </Box>
 
-                  <Grid item xs={12}>
+                  <Box>
                     <Button
                       variant="outlined"
                       component="label"
@@ -306,9 +325,9 @@ export default function MassDM() {
                         Selected: {accountForm.file.name}
                       </Typography>
                     )}
-                  </Grid>
+                  </Box>
 
-                  <Grid item xs={12}>
+                  <Box>
                     <Button
                       variant="contained"
                       startIcon={<SendIcon />}
@@ -318,10 +337,10 @@ export default function MassDM() {
                     >
                       {loading ? <CircularProgress size={24} /> : 'Send Messages via Account'}
                     </Button>
-                  </Grid>
-                </>
+                  </Box>
+                </Box>
               )}
-            </Grid>
+            </Box>
           </TabPanel>
         </CardContent>
       </Card>

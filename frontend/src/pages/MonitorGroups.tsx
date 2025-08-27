@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   Box,
   Typography,
@@ -6,7 +6,6 @@ import {
   CardContent,
   TextField,
   Button,
-  Grid,  // Add this
   Alert,
   CircularProgress,
   Stepper,
@@ -18,7 +17,9 @@ import {
 import { Download as DownloadIcon, Add as AddIcon } from '@mui/icons-material';
 import api, { endpoints } from '../api';
 
+
 const steps = ['Enter Details', 'Verify OTP', 'Download Results'];
+
 
 export default function MonitorGroups() {
   const [activeStep, setActiveStep] = useState(0);
@@ -36,9 +37,11 @@ export default function MonitorGroups() {
     limit: '50',
   });
 
+
   const [currentGroup, setCurrentGroup] = useState('');
   const [currentKeyword, setCurrentKeyword] = useState('');
   const [currentUser, setCurrentUser] = useState('');
+
 
   const addGroup = () => {
     if (currentGroup && !formData.group_usernames.includes(currentGroup)) {
@@ -47,12 +50,14 @@ export default function MonitorGroups() {
     }
   };
 
+
   const addKeyword = () => {
     if (currentKeyword && !formData.keywords.includes(currentKeyword)) {
       setFormData({ ...formData, keywords: [...formData.keywords, currentKeyword] });
       setCurrentKeyword('');
     }
   };
+
 
   const addUser = () => {
     if (currentUser && !formData.monitored_users.includes(currentUser)) {
@@ -61,12 +66,14 @@ export default function MonitorGroups() {
     }
   };
 
+
   const removeItem = (array: string[], item: string, field: string) => {
     setFormData({
       ...formData,
       [field]: array.filter(i => i !== item),
     });
   };
+
 
   const handleSendOTP = async () => {
     setLoading(true);
@@ -84,6 +91,7 @@ export default function MonitorGroups() {
       setLoading(false);
     }
   };
+
 
   const handleMonitor = async () => {
     setLoading(true);
@@ -107,11 +115,13 @@ export default function MonitorGroups() {
     }
   };
 
+
   const handleDownload = () => {
     const cleanPhone = formData.phone_number.replace('+', '');
     const downloadUrl = `${endpoints.monitoring.download}?phone_number=${cleanPhone}`;
     window.open(`http://localhost:8000${downloadUrl}`, '_blank');
   };
+
 
   const handleReset = () => {
     setActiveStep(0);
@@ -127,6 +137,7 @@ export default function MonitorGroups() {
     });
     setAlert(null);
   };
+
 
   return (
     <Box>
@@ -154,27 +165,29 @@ export default function MonitorGroups() {
           )}
 
           {activeStep === 0 && (
-            <Grid container spacing={3}>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
-                  label="API ID"
-                  type="number"
-                  value={formData.api_id}
-                  onChange={(e) => setFormData({ ...formData, api_id: e.target.value })}
-                  sx={{ mb: 2 }}
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
-                  label="API Hash"
-                  value={formData.api_hash}
-                  onChange={(e) => setFormData({ ...formData, api_hash: e.target.value })}
-                  sx={{ mb: 2 }}
-                />
-              </Grid>
-              <Grid item xs={12}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 3 }}>
+                <Box sx={{ flex: 1 }}>
+                  <TextField
+                    fullWidth
+                    label="API ID"
+                    type="number"
+                    value={formData.api_id}
+                    onChange={(e) => setFormData({ ...formData, api_id: e.target.value })}
+                    sx={{ mb: 2 }}
+                  />
+                </Box>
+                <Box sx={{ flex: 1 }}>
+                  <TextField
+                    fullWidth
+                    label="API Hash"
+                    value={formData.api_hash}
+                    onChange={(e) => setFormData({ ...formData, api_hash: e.target.value })}
+                    sx={{ mb: 2 }}
+                  />
+                </Box>
+              </Box>
+              <Box>
                 <TextField
                   fullWidth
                   label="Phone Number"
@@ -183,9 +196,9 @@ export default function MonitorGroups() {
                   onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
                   sx={{ mb: 2 }}
                 />
-              </Grid>
+              </Box>
               
-              <Grid item xs={12}>
+              <Box>
                 <Typography variant="h6" gutterBottom>Group Usernames</Typography>
                 <Box display="flex" gap={1} mb={2}>
                   <TextField
@@ -207,9 +220,9 @@ export default function MonitorGroups() {
                     />
                   ))}
                 </Box>
-              </Grid>
+              </Box>
 
-              <Grid item xs={12}>
+              <Box>
                 <Typography variant="h6" gutterBottom>Keywords to Monitor</Typography>
                 <Box display="flex" gap={1} mb={2}>
                   <TextField
@@ -232,9 +245,9 @@ export default function MonitorGroups() {
                     />
                   ))}
                 </Box>
-              </Grid>
+              </Box>
 
-              <Grid item xs={12}>
+              <Box>
                 <Typography variant="h6" gutterBottom>Users to Monitor (Optional)</Typography>
                 <Box display="flex" gap={1} mb={2}>
                   <TextField
@@ -257,9 +270,9 @@ export default function MonitorGroups() {
                     />
                   ))}
                 </Box>
-              </Grid>
+              </Box>
 
-              <Grid item xs={12}>
+              <Box>
                 <TextField
                   fullWidth
                   label="Message Limit"
@@ -276,13 +289,13 @@ export default function MonitorGroups() {
                 >
                   {loading ? <CircularProgress size={24} /> : 'Send OTP & Start Monitoring'}
                 </Button>
-              </Grid>
-            </Grid>
+              </Box>
+            </Box>
           )}
 
           {activeStep === 1 && (
-            <Grid container spacing={3}>
-              <Grid item xs={12}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <Box>
                 <Typography variant="body1" gutterBottom>
                   Enter the OTP code sent to {formData.phone_number}
                 </Typography>
@@ -301,13 +314,13 @@ export default function MonitorGroups() {
                 >
                   {loading ? <CircularProgress size={24} /> : 'Verify & Start Monitoring'}
                 </Button>
-              </Grid>
-            </Grid>
+              </Box>
+            </Box>
           )}
 
           {activeStep === 2 && (
-            <Grid container spacing={3}>
-              <Grid item xs={12}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <Box>
                 <Typography variant="h6" gutterBottom>
                   Monitoring Complete! 🎉
                 </Typography>
@@ -329,8 +342,8 @@ export default function MonitorGroups() {
                     Monitor Again
                   </Button>
                 </Box>
-              </Grid>
-            </Grid>
+              </Box>
+            </Box>
           )}
         </CardContent>
       </Card>

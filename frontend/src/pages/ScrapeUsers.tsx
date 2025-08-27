@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   Box,
   Typography,
@@ -6,7 +6,6 @@ import {
   CardContent,
   TextField,
   Button,
-  Grid,
   Alert,
   CircularProgress,
   Stepper,
@@ -16,7 +15,9 @@ import {
 import { Download as DownloadIcon } from '@mui/icons-material';
 import api, { endpoints } from '../api';
 
+
 const steps = ['Enter Details', 'Verify OTP', 'Download CSV'];
+
 
 export default function ScrapeUsers() {
   const [activeStep, setActiveStep] = useState(0);
@@ -30,6 +31,7 @@ export default function ScrapeUsers() {
     code: '',
     group_username: '',
   });
+
 
   const handleSendOTP = async () => {
     setLoading(true);
@@ -47,6 +49,7 @@ export default function ScrapeUsers() {
       setLoading(false);
     }
   };
+
 
   const handleScrape = async () => {
     setLoading(true);
@@ -67,11 +70,13 @@ export default function ScrapeUsers() {
     }
   };
 
+
   const handleDownload = () => {
     const cleanPhone = formData.phone_number.replace('+', '');
     const downloadUrl = `${endpoints.scraping.download}?phone_number=${cleanPhone}`;
     window.open(`http://localhost:8000${downloadUrl}`, '_blank');
   };
+
 
   const handleReset = () => {
     setActiveStep(0);
@@ -84,6 +89,7 @@ export default function ScrapeUsers() {
     });
     setAlert(null);
   };
+
 
   return (
     <Box>
@@ -111,27 +117,29 @@ export default function ScrapeUsers() {
           )}
 
           {activeStep === 0 && (
-            <Grid container spacing={3}>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
-                  label="API ID"
-                  type="number"
-                  value={formData.api_id}
-                  onChange={(e) => setFormData({ ...formData, api_id: e.target.value })}
-                  sx={{ mb: 2 }}
-                />
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
-                  label="API Hash"
-                  value={formData.api_hash}
-                  onChange={(e) => setFormData({ ...formData, api_hash: e.target.value })}
-                  sx={{ mb: 2 }}
-                />
-              </Grid>
-              <Grid item xs={12}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 3 }}>
+                <Box sx={{ flex: 1 }}>
+                  <TextField
+                    fullWidth
+                    label="API ID"
+                    type="number"
+                    value={formData.api_id}
+                    onChange={(e) => setFormData({ ...formData, api_id: e.target.value })}
+                    sx={{ mb: 2 }}
+                  />
+                </Box>
+                <Box sx={{ flex: 1 }}>
+                  <TextField
+                    fullWidth
+                    label="API Hash"
+                    value={formData.api_hash}
+                    onChange={(e) => setFormData({ ...formData, api_hash: e.target.value })}
+                    sx={{ mb: 2 }}
+                  />
+                </Box>
+              </Box>
+              <Box>
                 <TextField
                   fullWidth
                   label="Phone Number"
@@ -140,8 +148,8 @@ export default function ScrapeUsers() {
                   onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
                   sx={{ mb: 2 }}
                 />
-              </Grid>
-              <Grid item xs={12}>
+              </Box>
+              <Box>
                 <TextField
                   fullWidth
                   label="Group Username"
@@ -150,8 +158,8 @@ export default function ScrapeUsers() {
                   onChange={(e) => setFormData({ ...formData, group_username: e.target.value })}
                   sx={{ mb: 3 }}
                 />
-              </Grid>
-              <Grid item xs={12}>
+              </Box>
+              <Box>
                 <Button
                   variant="contained"
                   onClick={handleSendOTP}
@@ -160,13 +168,13 @@ export default function ScrapeUsers() {
                 >
                   {loading ? <CircularProgress size={24} /> : 'Send OTP & Start Scraping'}
                 </Button>
-              </Grid>
-            </Grid>
+              </Box>
+            </Box>
           )}
 
           {activeStep === 1 && (
-            <Grid container spacing={3}>
-              <Grid item xs={12}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <Box>
                 <Typography variant="body1" gutterBottom>
                   Enter the OTP code sent to {formData.phone_number}
                 </Typography>
@@ -185,13 +193,13 @@ export default function ScrapeUsers() {
                 >
                   {loading ? <CircularProgress size={24} /> : 'Verify & Scrape Users'}
                 </Button>
-              </Grid>
-            </Grid>
+              </Box>
+            </Box>
           )}
 
           {activeStep === 2 && (
-            <Grid container spacing={3}>
-              <Grid item xs={12}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <Box>
                 <Typography variant="h6" gutterBottom>
                   Scraping Complete! 🎉
                 </Typography>
@@ -213,8 +221,8 @@ export default function ScrapeUsers() {
                     Scrape Another Group
                   </Button>
                 </Box>
-              </Grid>
-            </Grid>
+              </Box>
+            </Box>
           )}
         </CardContent>
       </Card>
