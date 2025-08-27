@@ -65,7 +65,10 @@ services:
       - SECRET_KEY=${SECRET_KEY}
     volumes:
       - ./backend:/app
+      - ./job_results:/app/job_results
 ```
+
+**Note on Permissions:** The worker process needs to write to the `/app/job_results` directory. If you are using a bind mount to map a local directory to `/app/job_results` (as shown in the example above), you need to ensure that the directory on your host machine has the correct permissions for the user running inside the Docker container.
 
 ## Running Tests
 

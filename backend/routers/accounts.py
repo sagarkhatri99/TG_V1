@@ -33,13 +33,11 @@ async def create_account(
     db.add(account)
     db.commit()
     db.refresh(account)
-    db.close()
     return {"account_id": account.id, "status": "created", "next_step": "verify_phone"}
 
 @router.post("/{account_id}/send-code")
 async def send_verification_code(account_id: int, db: Session = Depends(get_db)):
     account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id).first()
-    db.close
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
 
@@ -64,7 +62,6 @@ async def verify_account(account_id: int, otp_code: str = Form(...), db: Session
         account.status = 'active'
         account.last_activity = datetime.utcnow()
         db.commit()
-        db.close()
         return {"status": "verified", "account_id": account.id}
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Verification failed: {str(e)}")
@@ -103,7 +100,6 @@ async def test_account_connection(account_id: int, db: Session = Depends(get_db)
         me = await client.get_me()
         account.last_activity = datetime.utcnow()
         db.commit()
-        db.close()
         return {
             "status": "connected",
             "user_id": me.id,
@@ -132,7 +128,6 @@ async def pause_account(account_id: int, db: Session = Depends(get_db)):
     for job in running_jobs:
         job.status = 'paused'
     db.commit()
-    db.close()
     return {"status": "paused", "jobs_affected": len(running_jobs)}
 
 @router.post("/{account_id}/resume")
@@ -143,7 +138,6 @@ async def resume_account(account_id: int, db: Session = Depends(get_db)):
 
     account.status = 'active'
     db.commit()
-    db.close()
     return {"status": "resumed"}
 
 @router.delete("/{account_id}")
@@ -155,5 +149,4 @@ async def delete_account(account_id: int, db: Session = Depends(get_db)):
     await session_manager.close_session(account_id)
     db.delete(account)
     db.commit()
-    db.close()
     return {"status": "deleted"}

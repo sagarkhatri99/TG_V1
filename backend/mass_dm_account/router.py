@@ -6,6 +6,8 @@ import json
 from pydantic import BaseModel
 from typing import Optional
 import shutil
+import os
+import tempfile
 
 router = APIRouter()
 
@@ -27,9 +29,9 @@ async def create_mass_dm_account_job(
         raise HTTPException(status_code=404, detail="Account not found")
 
     # Save the uploaded CSV file to a temporary location
-    temp_file_path = f"/app/job_results/temp_{csv_file.filename}"
-    with open(temp_file_path, "wb") as buffer:
-        shutil.copyfileobj(csv_file.file, buffer)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".csv", mode="wb") as temp_file:
+        shutil.copyfileobj(csv_file.file, temp_file)
+        temp_file_path = temp_file.name
 
     job_config = {
         "message": message,
@@ -46,7 +48,6 @@ async def create_mass_dm_account_job(
     db.add(new_job)
     db.commit()
     db.refresh(new_job)
-    db.close()
 
     return {"job_id": new_job.id, "message": "Mass DM Account job created successfully."}
 

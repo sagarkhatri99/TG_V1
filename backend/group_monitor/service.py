@@ -1,6 +1,7 @@
 from telethon import TelegramClient
 import csv
 import json
+import os
 from models import Job, TelegramAccount
 from sqlalchemy.orm import Session
 from core.session_manager import session_manager
@@ -50,13 +51,18 @@ async def execute_group_monitor_job(job: Job, db: Session):
                         })
 
         filename = f"/app/job_results/monitored_messages_job_{job.id}.csv"
-        with open(filename, 'w', encoding='utf-8', newline='') as f:
-            writer = csv.DictWriter(f, fieldnames=["group", "user", "text", "timestamp"])
-            writer.writeheader()
-            for msg in found_messages:
-                writer.writerow(msg)
+        try:
+            os.makedirs(os.path.dirname(filename), exist_ok=True)
+            with open(filename, 'w', encoding='utf-8', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=["group", "user", "text", "timestamp"])
+                writer.writeheader()
+                for msg in found_messages:
+                    writer.writerow(msg)
+            job.status = 'completed'
+        except PermissionError:
+            logger.error(f"Permission denied to write to {filename}. Please check directory permissions.")
+            raise Exception(f"Permission denied to write to {filename}.")
 
-        job.status = 'completed'
         job.progress = 100
         db.commit()
         logger.info(f"Group monitor job {job.id} completed successfully.")

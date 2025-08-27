@@ -38,7 +38,6 @@ async def create_group_monitor_job(request: GroupMonitorRequest, db: Session = D
     db.add(new_job)
     db.commit()
     db.refresh(new_job)
-    db.close()
 
     return {"job_id": new_job.id, "message": "Group monitor job created successfully."}
 

@@ -13,7 +13,7 @@ class AutoPromoRequest(BaseModel):
     account_id: int
     target_group: str
     promo_message: str
-    interval_seconds: int
+    interval_seconds: Optional[int] = None
     use_random_interval: bool = False
     min_interval: Optional[int] = None
     max_interval: Optional[int] = None
@@ -47,7 +47,6 @@ async def create_auto_promo_job(request: AutoPromoRequest, db: Session = Depends
     db.add(new_job)
     db.commit()
     db.refresh(new_job)
-    db.close()
 
     return {"job_id": new_job.id, "message": "Auto promo job created successfully."}
 
