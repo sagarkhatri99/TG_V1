@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -8,340 +8,179 @@ import {
   Button,
   Alert,
   CircularProgress,
-  Tabs,
-  Tab,
-  Divider,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  RadioGroup,
+  FormControlLabel,
+  Radio,
 } from '@mui/material';
-
 import { Send as SendIcon, Upload as UploadIcon } from '@mui/icons-material';
-import api, { endpoints } from '../api';
+import api from '/src/api/Index';
+import { TelegramAccount } from '/src/Types/Index';
 
-
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number;
-}
-
-
-function TabPanel({ children, value, index }: TabPanelProps) {
-  return (
-    <div hidden={value !== index}>
-      {value === index && <Box sx={{ pt: 3 }}>{children}</Box>}
-    </div>
-  );
-}
-
+type DmMethod = 'account' | 'bot';
 
 export default function MassDM() {
-  const [tabValue, setTabValue] = useState(0);
   const [loading, setLoading] = useState(false);
   const [alert, setAlert] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+  const [accounts, setAccounts] = useState<TelegramAccount[]>([]);
+  const [dmMethod, setDmMethod] = useState<DmMethod>('account');
+  const [csvFile, setCsvFile] = useState<File | null>(null);
   
-  // Bot DM state
-  const [botForm, setBotForm] = useState({
+  const [formData, setFormData] = useState({
+    account_id: '',
     bot_token: '',
     message: '',
-    file: null as File | null,
+    stop_after_hours: '',
   });
 
+  useEffect(() => {
+    if (dmMethod === 'account') {
+      const fetchAccounts = async () => {
+        try {
+          const response = await api.get('/api/accounts/list');
+          setAccounts(response.data.accounts);
+        } catch (error) {
+          setAlert({ type: 'error', message: 'Failed to fetch accounts.' });
+        }
+      };
+      fetchAccounts();
+    }
+  }, [dmMethod]);
 
-  // Account DM state
-  const [accountForm, setAccountForm] = useState({
-    api_id: '',
-    api_hash: '',
-    phone_number: '',
-    otp: '',
-    message: '',
-    file: null as File | null,
-  });
-  const [otpSent, setOtpSent] = useState(false);
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files) {
+      setCsvFile(event.target.files[0]);
+    }
+  };
 
-
-  const handleBotDM = async () => {
-    if (!botForm.file) {
-      setAlert({ type: 'error', message: 'Please upload a CSV file with chat IDs' });
+  const handleCreateJob = async () => {
+    if (!csvFile) {
+      setAlert({ type: 'error', message: 'Please upload a CSV file.' });
       return;
     }
 
-
     setLoading(true);
+    setAlert(null);
+
+    const apiFormData = new FormData();
+    apiFormData.append('message', formData.message);
+    apiFormData.append('csv_file', csvFile);
+    if (formData.stop_after_hours) {
+      apiFormData.append('stop_after_hours', formData.stop_after_hours);
+    }
+
+    let url = '';
+    if (dmMethod === 'account') {
+      url = '/api/mass-dm-account/create-job';
+      apiFormData.append('account_id', formData.account_id);
+    } else {
+      url = '/api/mass-dm-bot/create-job';
+      apiFormData.append('bot_token', formData.bot_token);
+    }
+
     try {
-      const formData = new FormData();
-      formData.append('bot_token', botForm.bot_token);
-      formData.append('message', botForm.message);
-      formData.append('file', botForm.file);
-
-
-      const response = await api.post(endpoints.massDM.bot, formData, {
+      const response = await api.post(url, apiFormData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-
-
-      setAlert({ type: 'success', message: response.data.message });
+      setAlert({ type: 'success', message: response.data.message || 'Job created successfully!' });
     } catch (error: any) {
-      setAlert({ type: 'error', message: error.response?.data?.detail || 'Failed to send messages' });
+      setAlert({ type: 'error', message: error.response?.data?.detail || 'Failed to create job' });
     } finally {
       setLoading(false);
     }
   };
-
-
-  const handleSendOTP = async () => {
-    setLoading(true);
-    try {
-      await api.post(endpoints.massDM.account.startAuth, {
-        api_id: parseInt(accountForm.api_id),
-        api_hash: accountForm.api_hash,
-        phone_number: accountForm.phone_number,
-      });
-      setAlert({ type: 'success', message: 'OTP sent to your phone!' });
-      setOtpSent(true);
-    } catch (error: any) {
-      setAlert({ type: 'error', message: error.response?.data?.detail || 'Failed to send OTP' });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-
-  const handleAccountDM = async () => {
-    if (!accountForm.file) {
-      setAlert({ type: 'error', message: 'Please upload a CSV file with user IDs or usernames' });
-      return;
-    }
-
-
-    setLoading(true);
-    try {
-      const formData = new FormData();
-      formData.append('api_id', accountForm.api_id);
-      formData.append('api_hash', accountForm.api_hash);
-      formData.append('phone_number', accountForm.phone_number);
-      formData.append('otp', accountForm.otp);
-      formData.append('message', accountForm.message);
-      formData.append('file', accountForm.file);
-
-
-      const response = await api.post(endpoints.massDM.account.send, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-
-
-      setAlert({ type: 'success', message: response.data.message });
-    } catch (error: any) {
-      setAlert({ type: 'error', message: error.response?.data?.detail || 'Failed to send messages' });
-    } finally {
-      setLoading(false);
-    }
-  };
-
 
   return (
     <Box>
       <Typography variant="h4" gutterBottom>
-        Mass Direct Messages
+        Mass DM
       </Typography>
       <Typography variant="body1" color="text.secondary" gutterBottom>
-        Send bulk direct messages using either a Telegram bot or your personal account.
+        Create a job to send a direct message to a list of users.
       </Typography>
-
-
-      {alert && (
-        <Alert severity={alert.type} onClose={() => setAlert(null)} sx={{ mb: 3 }}>
-          {alert.message}
-        </Alert>
-      )}
-
 
       <Card sx={{ mt: 3 }}>
         <CardContent>
-          <Tabs value={tabValue} onChange={(_, newValue) => setTabValue(newValue)}>
-            <Tab label="Via Bot" />
-            <Tab label="Via Account" />
-          </Tabs>
+          {alert && (
+            <Alert severity={alert.type} onClose={() => setAlert(null)} sx={{ mb: 3 }}>
+              {alert.message}
+            </Alert>
+          )}
 
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <FormControl component="fieldset">
+              <RadioGroup row value={dmMethod} onChange={(e) => setDmMethod(e.target.value as DmMethod)}>
+                <FormControlLabel value="account" control={<Radio />} label="Using Account" />
+                <FormControlLabel value="bot" control={<Radio />} label="Using Bot Token" />
+              </RadioGroup>
+            </FormControl>
 
-          <TabPanel value={tabValue} index={0}>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
-              Use a Telegram bot to send messages. Requires bot token and CSV with chat_id column.
-            </Typography>
-            <Divider sx={{ my: 2 }} />
-
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <Box>
-                <TextField
-                  fullWidth
-                  label="Bot Token"
-                  placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"
-                  value={botForm.bot_token}
-                  onChange={(e) => setBotForm({ ...botForm, bot_token: e.target.value })}
-                  sx={{ mb: 2 }}
-                />
-              </Box>
-
-              <Box>
-                <TextField
-                  fullWidth
-                  multiline
-                  rows={4}
-                  label="Message"
-                  placeholder="Your message here..."
-                  value={botForm.message}
-                  onChange={(e) => setBotForm({ ...botForm, message: e.target.value })}
-                  sx={{ mb: 2 }}
-                />
-              </Box>
-
-              <Box>
-                <Button
-                  variant="outlined"
-                  component="label"
-                  startIcon={<UploadIcon />}
-                  sx={{ mb: 2 }}
+            {dmMethod === 'account' ? (
+              <FormControl fullWidth>
+                <InputLabel id="account-select-label">Select Account</InputLabel>
+                <Select
+                  labelId="account-select-label"
+                  value={formData.account_id}
+                  label="Select Account"
+                  onChange={(e) => setFormData({ ...formData, account_id: e.target.value })}
                 >
-                  Upload CSV File (chat_id column required)
-                  <input
-                    type="file"
-                    accept=".csv"
-                    hidden
-                    onChange={(e) => setBotForm({ ...botForm, file: e.target.files?.[0] || null })}
-                  />
-                </Button>
-                {botForm.file && (
-                  <Typography variant="body2" color="text.secondary">
-                    Selected: {botForm.file.name}
-                  </Typography>
-                )}
-              </Box>
+                  {accounts.map((account) => (
+                    <MenuItem key={account.id} value={account.id}>
+                      {account.nickname} ({account.phone_number})
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            ) : (
+              <TextField
+                fullWidth
+                label="Bot Token"
+                value={formData.bot_token}
+                onChange={(e) => setFormData({ ...formData, bot_token: e.target.value })}
+              />
+            )}
 
-              <Box>
-                <Button
-                  variant="contained"
-                  startIcon={<SendIcon />}
-                  onClick={handleBotDM}
-                  disabled={loading || !botForm.bot_token || !botForm.message || !botForm.file}
-                  fullWidth
-                >
-                  {loading ? <CircularProgress size={24} /> : 'Send Messages via Bot'}
-                </Button>
-              </Box>
-            </Box>
-          </TabPanel>
+            <TextField
+              fullWidth
+              multiline
+              rows={4}
+              label="Message"
+              value={formData.message}
+              onChange={(e) => setFormData({ ...formData, message: e.target.value })}
+            />
 
+            <Button
+              variant="outlined"
+              component="label"
+              startIcon={<UploadIcon />}
+            >
+              Upload CSV
+              <input type="file" hidden accept=".csv" onChange={handleFileChange} />
+            </Button>
+            {csvFile && <Typography variant="body2">{csvFile.name}</Typography>}
 
-          <TabPanel value={tabValue} index={1}>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
-              Use your personal Telegram account to send messages. More features but requires verification.
-            </Typography>
-            <Divider sx={{ my: 2 }} />
+            <TextField
+              fullWidth
+              label="Stop After (hours)"
+              type="number"
+              placeholder="Optional"
+              value={formData.stop_after_hours}
+              onChange={(e) => setFormData({ ...formData, stop_after_hours: e.target.value })}
+            />
 
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 3 }}>
-                <Box sx={{ flex: 1 }}>
-                  <TextField
-                    fullWidth
-                    label="API ID"
-                    type="number"
-                    value={accountForm.api_id}
-                    onChange={(e) => setAccountForm({ ...accountForm, api_id: e.target.value })}
-                    sx={{ mb: 2 }}
-                  />
-                </Box>
-                <Box sx={{ flex: 1 }}>
-                  <TextField
-                    fullWidth
-                    label="API Hash"
-                    value={accountForm.api_hash}
-                    onChange={(e) => setAccountForm({ ...accountForm, api_hash: e.target.value })}
-                    sx={{ mb: 2 }}
-                  />
-                </Box>
-              </Box>
-              <Box>
-                <TextField
-                  fullWidth
-                  label="Phone Number"
-                  placeholder="+1234567890"
-                  value={accountForm.phone_number}
-                  onChange={(e) => setAccountForm({ ...accountForm, phone_number: e.target.value })}
-                  sx={{ mb: 2 }}
-                />
-              </Box>
-
-              {!otpSent ? (
-                <Box>
-                  <Button
-                    variant="outlined"
-                    onClick={handleSendOTP}
-                    disabled={loading || !accountForm.api_id || !accountForm.api_hash || !accountForm.phone_number}
-                    fullWidth
-                  >
-                    {loading ? <CircularProgress size={24} /> : 'Send OTP'}
-                  </Button>
-                </Box>
-              ) : (
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  <Box>
-                    <TextField
-                      fullWidth
-                      label="OTP Code"
-                      value={accountForm.otp}
-                      onChange={(e) => setAccountForm({ ...accountForm, otp: e.target.value })}
-                      sx={{ mb: 2 }}
-                    />
-                  </Box>
-
-                  <Box>
-                    <TextField
-                      fullWidth
-                      multiline
-                      rows={4}
-                      label="Message"
-                      placeholder="Your message here..."
-                      value={accountForm.message}
-                      onChange={(e) => setAccountForm({ ...accountForm, message: e.target.value })}
-                      sx={{ mb: 2 }}
-                    />
-                  </Box>
-
-                  <Box>
-                    <Button
-                      variant="outlined"
-                      component="label"
-                      startIcon={<UploadIcon />}
-                      sx={{ mb: 2 }}
-                    >
-                      Upload CSV File (user_id or username column)
-                      <input
-                        type="file"
-                        accept=".csv"
-                        hidden
-                        onChange={(e) => setAccountForm({ ...accountForm, file: e.target.files?.[0] || null })}
-                      />
-                    </Button>
-                    {accountForm.file && (
-                      <Typography variant="body2" color="text.secondary">
-                        Selected: {accountForm.file.name}
-                      </Typography>
-                    )}
-                  </Box>
-
-                  <Box>
-                    <Button
-                      variant="contained"
-                      startIcon={<SendIcon />}
-                      onClick={handleAccountDM}
-                      disabled={loading || !accountForm.otp || !accountForm.message || !accountForm.file}
-                      fullWidth
-                    >
-                      {loading ? <CircularProgress size={24} /> : 'Send Messages via Account'}
-                    </Button>
-                  </Box>
-                </Box>
-              )}
-            </Box>
-          </TabPanel>
+            <Button
+              variant="contained"
+              startIcon={<SendIcon />}
+              onClick={handleCreateJob}
+              disabled={loading || (dmMethod === 'account' && !formData.account_id) || (dmMethod === 'bot' && !formData.bot_token) || !formData.message || !csvFile}
+              fullWidth
+            >
+              {loading ? <CircularProgress size={24} /> : 'Create Mass DM Job'}
+            </Button>
+          </Box>
         </CardContent>
       </Card>
     </Box>

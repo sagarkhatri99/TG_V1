@@ -1,61 +1,96 @@
 from telethon import TelegramClient
 import asyncio
-from database import get_db
-from models import TelegramAccount
+from models import Job, TelegramAccount
+from sqlalchemy.orm import Session
+from core.session_manager import session_manager
+import json
 import logging
 
 logger = logging.getLogger(__name__)
-pending_clients = {}
 
-async def start_auto_promo_auth(api_id: int, api_hash: str, phone_number: str):
-    """
-    Starts Telegram authentication by sending an OTP to the given phone.
-    """
-    session_name = f"temp_auto_promo_{phone_number}"
-    client = TelegramClient(session_name, api_id, api_hash)
-    await client.connect()
-    await client.send_code_request(phone_number)
-    pending_clients[phone_number] = (client, api_id, api_hash)
-    return True
+import random
+import time
+from datetime import datetime, timedelta
 
-async def verify_and_start_promo(
-    api_id: int,
-    api_hash: str,
-    phone_number: str,
-    code: str,
-    target_group: str,
-    promo_message: str,
-    interval_seconds: int,
-):
-    """
-    Verifies the OTP, logs in, and starts sending promo messages at intervals to the target group.
-    """
-    session_name = f"auto_promo_{phone_number}"
+async def execute_auto_promo_job(job: Job, db: Session):
+    try:
+        job.status = 'running'
+        job.started_at = datetime.utcnow()
+        db.commit()
 
-    if phone_number in pending_clients:
-        client, _, _ = pending_clients.pop(phone_number)
-    else:
-        client = TelegramClient(session_name, api_id, api_hash)
-        await client.connect()
+        account = db.query(TelegramAccount).filter(TelegramAccount.id == job.telegram_account_id).first()
+        if not account:
+            raise Exception("Account not found")
 
-    await client.sign_in(phone=phone_number, code=code)
+        config = json.loads(job.config)
+        target_group = config.get('target_group')
+        promo_message = config.get('promo_message')
+        interval_seconds = config.get('interval_seconds', 3600)
+        use_random_interval = config.get('use_random_interval', False)
+        min_interval = config.get('min_interval')
+        max_interval = config.get('max_interval')
+        stop_after_hours = config.get('stop_after_hours')
 
-    async def promo_task():
+        client = await session_manager.get_client(account)
+
+        stop_time = datetime.utcnow() + timedelta(hours=stop_after_hours) if stop_after_hours else None
+
         async with client:
             group = await client.get_entity(target_group)
             while True:
-                # Re-fetch account status from DB
-                db = next(get_db())
-                account = db.query(TelegramAccount).filter(TelegramAccount.phone_number == phone_number).first()
-                db.close()             
-                if not account or account.status != 'active':
-                    logger.info(f"Auto promo stopped: account {phone_number} status={account.status if account else 'not found'}")
+                # Check for stop conditions
+                db.refresh(job)
+                db.refresh(account)
+                if job.status != 'running' or account.status != 'active':
+                    logger.info(f"Auto promo job {job.id} stopped. Job status: {job.status}, Account status: {account.status}")
+                    if job.status == 'running':
+                        job.status = 'paused'
+                    break
+
+                if stop_time and datetime.utcnow() >= stop_time:
+                    logger.info(f"Auto promo job {job.id} reached its time limit of {stop_after_hours} hours.")
+                    job.status = 'completed'
                     break
 
                 await client.send_message(group, promo_message)
-                logger.info(f"Sent promo message to {target_group} for account {phone_number}")
-                await asyncio.sleep(interval_seconds)
+                logger.info(f"Sent promo message to {target_group} for job {job.id}")
 
-    asyncio.create_task(promo_task())
+                job.progress = (job.progress or 0) + 1
+                db.commit()
 
-    return "Auto promo started successfully."
+                sleep_time = interval_seconds
+                if use_random_interval and min_interval and max_interval:
+                    sleep_time = random.randint(min_interval, max_interval)
+
+                logger.info(f"Job {job.id} sleeping for {sleep_time} seconds.")
+                await asyncio.sleep(sleep_time)
+
+        if job.status == 'running':
+            job.status = 'completed'
+        job.completed_at = datetime.utcnow()
+        db.commit()
+
+    except Exception as e:
+        logger.error(f"Error executing auto promo job {job.id}: {e}")
+        job.status = 'failed'
+        job.error_message = str(e)
+        db.commit()
+    finally:
+        db.close()
+
+# Old service functions are deprecated.
+# pending_clients = {}
+
+# async def start_auto_promo_auth(api_id: int, api_hash: str, phone_number: str):
+#     ...
+
+# async def verify_and_start_promo(
+#     api_id: int,
+#     api_hash: str,
+#     phone_number: str,
+#     code: str,
+#     target_group: str,
+#     promo_message: str,
+#     interval_seconds: int,
+# ):
+#     ...

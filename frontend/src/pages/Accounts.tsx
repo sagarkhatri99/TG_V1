@@ -30,8 +30,8 @@ import {
   Science as TestIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
-import api, { endpoints } from '../api';
-import type { TelegramAccount, CreateAccountRequest } from '../types';
+import api, { endpoints } from '/src/api/Index';
+import type { TelegramAccount, CreateAccountRequest } from '/src/Types/Index';
 
 
 export default function Accounts() {

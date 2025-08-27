@@ -32,6 +32,44 @@ This will build the Docker images for the backend, database, and Redis services,
 
 The backend service will be available at `http://localhost:8000`.
 
+## Running the Worker
+
+The application uses a background worker to process long-running jobs like group monitoring and auto-promo campaigns. The worker needs to be run as a separate process.
+
+To run the worker, you can execute the following command inside the running backend container:
+
+```bash
+docker-compose exec backend python worker.py
+```
+
+Alternatively, you can add a new service to the `docker-compose.yml` file to run the worker automatically.
+
+### Example `docker-compose.yml` with a worker service:
+
+```yaml
+services:
+  # ... other services (backend, db, redis)
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: python worker.py
+    depends_on:
+      - db
+      - redis
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - REDIS_URL=${REDIS_URL}
+      - SECRET_KEY=${SECRET_KEY}
+    volumes:
+      - ./backend:/app
+      - ./job_results:/app/job_results
+```
+
+**Note on Permissions:** The worker process needs to write to the `/app/job_results` directory. If you are using a bind mount to map a local directory to `/app/job_results` (as shown in the example above), you need to ensure that the directory on your host machine has the correct permissions for the user running inside the Docker container.
+
 ## Running Tests
 
 To run the test suite, you can use `pytest`. The tests are configured to run against the running services in the Docker environment.

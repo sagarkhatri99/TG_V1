@@ -24,6 +24,7 @@ import {
   Visibility as MonitorIcon,
   Send as SendIcon,
   Campaign as PromoIcon,
+  Work as WorkIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -35,6 +36,7 @@ interface LayoutProps {
 
 const menuItems = [
   { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
+  { text: 'Jobs', icon: <WorkIcon />, path: '/jobs' },
   { text: 'Accounts', icon: <AccountIcon />, path: '/accounts' },
   { text: 'Scrape Users', icon: <SearchIcon />, path: '/scrape' },
   { text: 'Monitor Groups', icon: <MonitorIcon />, path: '/monitor' },
