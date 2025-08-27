@@ -2,6 +2,8 @@ from telegram import Bot
 import pandas as pd
 from typing import IO
 import time
+import random
+import asyncio
 async def send_mass_dm_bot(bot_token: str, csv_file: IO, message: str) -> str:
     bot = Bot(token=bot_token)
     try:
@@ -19,7 +21,7 @@ async def send_mass_dm_bot(bot_token: str, csv_file: IO, message: str) -> str:
             try:
                 await bot.send_message(chat_id=uid, text=message)
                 sent += 1
-                time.sleep(5)  # To avoid hitting rate limits
+                await asyncio.sleep(random.randint(5, 300))  # To avoid hitting rate limits
             except Exception as e:
                 pass
         return f"Sent message to {sent} users."

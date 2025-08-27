@@ -2,6 +2,8 @@ from telethon import TelegramClient
 import pandas as pd
 from typing import IO
 import time
+import random
+import asyncio
 
 # In-memory store for pending OTP logins per phone number
 pending_clients = {}
@@ -47,7 +49,7 @@ async def send_mass_dm_account_with_otp(
                 try:
                     await client.send_message(uid, message)
                     sent += 1
-                    time.sleep(5)
+                    await asyncio.sleep(random.randint(5, 300))
                 except Exception:
                     pass
         return f"Sent message to {sent} users."
