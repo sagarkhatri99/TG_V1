@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 import logging
 
-from database import create_tables, get_db
+from database import get_db
 from routers.accounts import router as accounts_router
 from routers.jobs import router as jobs_router
 from scrape_user_id.router import router as scrape_router
@@ -34,9 +34,7 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup_event():
-    logger.info("Creating database tables...")
-    create_tables()
-    logger.info("Database setup complete")
+    logger.info("Database setup is handled by Alembic in entrypoint.sh")
 
 @app.get("/")
 def read_root():
@@ -49,9 +47,9 @@ def health_check():
 @app.get("/stats")
 def system_stats(db: Session = Depends(get_db)):
     active_accounts = db.query(TelegramAccount).filter(TelegramAccount.status == 'active').count()
-    db.close()
     # For active sessions, adjust based on your session manager if accessible
     active_sessions = 0
+    db.close()
     return {
         "active_sessions": active_sessions,
         "active_accounts": active_accounts,
@@ -74,9 +72,9 @@ def account_stats(account_id: int, db: Session = Depends(get_db)):
     successful_messages = db.query(MessageLog).filter(MessageLog.telegram_account_id == account_id, MessageLog.delivery_status == 'sent').count()
     failed_messages = db.query(MessageLog).filter(MessageLog.telegram_account_id == account_id, MessageLog.delivery_status == 'failed').count()
     unique_users = db.query(UserInteraction).filter(UserInteraction.telegram_account_id == account_id).count()
-    db.close()
     success_rate = (successful_messages / total_messages * 100) if total_messages else 0.0
-
+    db.close()
+    
     return {
         "account_id": account_id,
         "nickname": account.nickname,
@@ -108,4 +106,4 @@ app.include_router(auto_promo_router, prefix="/api/auto_promo", tags=["Auto Prom
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port="8000")

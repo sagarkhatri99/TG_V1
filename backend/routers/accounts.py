@@ -135,7 +135,7 @@ async def pause_account(account_id: int, db: Session = Depends(get_db)):
 
     account.status = 'paused'
     db.commit()
-    
+
     from models import Job
     running_jobs = db.query(Job).filter(
         Job.telegram_account_id == account_id,

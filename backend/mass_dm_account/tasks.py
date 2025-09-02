@@ -33,13 +33,11 @@ async def _mass_dm_runner(job: Job, db: Session):
         raise Exception("CSV must have a 'user_id' or 'username' column.")
 
     client = await session_manager.get_client(account)
-
     stop_time = datetime.utcnow() + timedelta(hours=stop_after_hours) if stop_after_hours else None
-
     sent_count = 0
-
+    
     async with client:
-        for uid in ids:
+        for i, uid in enumerate(ids):
             db.refresh(job)
             db.refresh(account)
             if job.status != 'running' or account.status != 'active':
@@ -57,7 +55,10 @@ async def _mass_dm_runner(job: Job, db: Session):
                 await client.send_message(uid, message)
                 sent_count += 1
                 job.progress = (sent_count / len(ids)) * 100
-                db.commit()
+                
+                # Commit progress in batches of 5 or at the end
+                if (i + 1) % 5 == 0 or (i + 1) == len(ids):
+                    db.commit()
 
                 sleep_time = random.randint(5, 300)
                 logger.info(f"Job {job.id} sent message to {uid}, sleeping for {sleep_time} seconds.")
@@ -87,9 +88,6 @@ def mass_dm_account_task(self, job_id: int):
         job.completed_at = datetime.utcnow()
         db.commit()
 
-    except FloodWaitError as e:
-        logger.warning(f"Flood wait error for job {job_id}: {e}. Retrying in {e.seconds} seconds.")
-        self.retry(countdown=e.seconds)
     except Exception as e:
         logger.error(f"Error executing Mass DM Account job {job_id}: {e}")
         job.status = 'failed'

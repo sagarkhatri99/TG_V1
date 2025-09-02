@@ -12,6 +12,7 @@ celery_app = Celery(
         'auto_promo.tasks',
         'group_monitor.tasks',
         'mass_dm_account.tasks',
+        'mass_dm_bot.tasks',
     ]
 )
 

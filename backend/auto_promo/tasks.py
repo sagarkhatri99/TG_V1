@@ -28,7 +28,6 @@ async def _auto_promo_runner(job: Job, db: Session):
     stop_after_hours = config.get('stop_after_hours')
 
     client = await session_manager.get_client(account)
-
     stop_time = datetime.utcnow() + timedelta(hours=stop_after_hours) if stop_after_hours else None
 
     async with client:
@@ -51,7 +50,7 @@ async def _auto_promo_runner(job: Job, db: Session):
             logger.info(f"Sent promo message to {target_group} for job {job.id}")
 
             job.progress = (job.progress or 0) + 1
-            db.commit()
+            db.commit() # This job runs infrequently, so committing every time is okay.
 
             sleep_time = interval_seconds
             if use_random_interval and min_interval and max_interval:
@@ -63,12 +62,11 @@ async def _auto_promo_runner(job: Job, db: Session):
 @celery_app.task(bind=True, max_retries=3)
 def auto_promo_task(self, job_id: int):
     db: Session = SessionLocal()
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        logger.error(f"Job {job_id} not found.")
+        return
     try:
-        job = db.query(Job).filter(Job.id == job_id).first()
-        if not job:
-            logger.error(f"Job {job_id} not found.")
-            return
-
         job.status = 'running'
         job.started_at = datetime.utcnow()
         db.commit()
@@ -80,9 +78,6 @@ def auto_promo_task(self, job_id: int):
         job.completed_at = datetime.utcnow()
         db.commit()
 
-    except FloodWaitError as e:
-        logger.warning(f"Flood wait error for job {job_id}: {e}. Retrying in {e.seconds} seconds.")
-        self.retry(countdown=e.seconds)
     except Exception as e:
         logger.error(f"Error executing auto promo job {job_id}: {e}")
         job.status = 'failed'
