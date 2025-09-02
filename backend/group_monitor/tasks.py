@@ -8,6 +8,7 @@ import logging
 import csv
 import os
 import asyncio
+from datetime import datetime
 from telethon.errors import FloodWaitError
 
 logger = logging.getLogger(__name__)
@@ -30,12 +31,7 @@ async def _group_monitor_runner(job: Job, db: Session):
 
     async with client:
         for group_username in group_usernames:
-            try:
-                group = await client.get_entity(group_username)
-            except Exception as e:
-                logger.error(f"Error fetching group {group_username} for job {job.id}: {e}")
-                continue
-
+            group = await client.get_entity(group_username)
             async for message in client.iter_messages(group, limit=limit):
                 processed_messages += 1
                 msg_text = message.text or ""
@@ -67,19 +63,20 @@ async def _group_monitor_runner(job: Job, db: Session):
 @celery_app.task(bind=True, max_retries=3)
 def group_monitor_task(self, job_id: int):
     db: Session = SessionLocal()
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        logger.error(f"Job {job_id} not found.")
+        return
     try:
-        job = db.query(Job).filter(Job.id == job_id).first()
-        if not job:
-            logger.error(f"Job {job_id} not found.")
-            return
-
         job.status = 'running'
+        job.started_at = datetime.utcnow()
         db.commit()
 
         asyncio.run(_group_monitor_runner(job, db))
 
         job.status = 'completed'
         job.progress = 100
+        job.completed_at = datetime.utcnow()
         db.commit()
         logger.info(f"Group monitor job {job.id} completed successfully.")
 

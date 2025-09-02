@@ -8,11 +8,13 @@ ENV PYTHONUNBUFFERED=1
 # Set the working directory in the container
 WORKDIR /app
 
-# Install system dependencies (needed for psycopg2 and other libs)
+# Install system dependencies (needed for psycopg2, curl, etc.)
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
        build-essential \
        libpq-dev \
+       curl \
+       sed \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the requirements file into the container
@@ -24,15 +26,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application code
 COPY . .
 
-# Copy the entrypoint script
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# Fix line endings and make the entrypoint script executable
+RUN sed -i 's/\r$//' /app/entrypoint.sh \
+    && chmod +x /app/entrypoint.sh
 
 # Expose port for backend
 EXPOSE 8000
 
 # Set the entrypoint
-ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/bin/bash", "/app/entrypoint.sh"]
 
 # Start the app
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

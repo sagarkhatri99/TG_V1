@@ -123,10 +123,6 @@ async def delete_job(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     
-    # Only allow deletion of completed, failed, or paused jobs
-    if job.status in ['running', 'pending']:
-        raise HTTPException(status_code=400, detail="Cannot delete active job")
-    
     db.delete(job)
     db.commit()
     
