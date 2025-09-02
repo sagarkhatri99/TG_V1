@@ -4,13 +4,16 @@ import asyncio
 import random
 from typing import Dict, Optional
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
 class SessionManager:
-    def __init__(self):
+    def __init__(self, session_folder="sessions"):
         self.active_sessions: Dict[int, TelegramClient] = {}
         self.session_locks: Dict[int, asyncio.Lock] = {}
+        self.session_folder = session_folder
+        os.makedirs(self.session_folder, exist_ok=True)
     
     async def get_client(self, account) -> TelegramClient:
         """Get or create a Telegram client for an account"""
@@ -32,14 +35,10 @@ class SessionManager:
                 'port': int(proxy_parts),
             }
         
-        # Create client with session string
-        if account.session_string:
-            session = StringSession(account.session_string)
-        else:
-            session = StringSession()
+        session_path = os.path.join(self.session_folder, f"account_{account.id}.session")
         
         client = TelegramClient(
-            session,
+            session_path,
             int(account.api_id),
             account.api_hash,
             proxy=proxy,
@@ -87,4 +86,4 @@ class SessionManager:
                 del self.session_locks[account_id]
 
 # Global session manager instance
-session_manager = SessionManager()
+session_manager = SessionManager(session_folder="/app/sessions")

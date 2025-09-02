@@ -4,6 +4,7 @@ from models import Job, TelegramAccount
 from database import get_db
 import json
 from pydantic import BaseModel
+from .tasks import auto_promo_task
 
 router = APIRouter()
 
@@ -47,6 +48,8 @@ async def create_auto_promo_job(request: AutoPromoRequest, db: Session = Depends
     db.add(new_job)
     db.commit()
     db.refresh(new_job)
+
+    auto_promo_task.delay(new_job.id)
 
     return {"job_id": new_job.id, "message": "Auto promo job created successfully."}
 

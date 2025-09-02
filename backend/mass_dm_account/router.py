@@ -8,6 +8,7 @@ from typing import Optional
 import shutil
 import os
 import tempfile
+from .tasks import mass_dm_account_task
 
 router = APIRouter()
 
@@ -48,6 +49,8 @@ async def create_mass_dm_account_job(
     db.add(new_job)
     db.commit()
     db.refresh(new_job)
+
+    mass_dm_account_task.delay(new_job.id)
 
     return {"job_id": new_job.id, "message": "Mass DM Account job created successfully."}
 
