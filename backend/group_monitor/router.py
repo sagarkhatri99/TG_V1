@@ -6,6 +6,7 @@ import json
 from pydantic import BaseModel
 from typing import List, Optional
 from fastapi.responses import StreamingResponse
+from .tasks import group_monitor_task
 
 router = APIRouter()
 
@@ -38,6 +39,8 @@ async def create_group_monitor_job(request: GroupMonitorRequest, db: Session = D
     db.add(new_job)
     db.commit()
     db.refresh(new_job)
+
+    group_monitor_task.delay(new_job.id)
 
     return {"job_id": new_job.id, "message": "Group monitor job created successfully."}
 
