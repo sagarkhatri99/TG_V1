@@ -17,7 +17,7 @@ import {
   Alert,
 } from '@mui/material';
 import { PlayArrow, Pause, Delete, Refresh, Download } from '@mui/icons-material';
-import api from '/src/api/Index';
+import api from '../api/Index';
 
 interface Job {
   id: number;

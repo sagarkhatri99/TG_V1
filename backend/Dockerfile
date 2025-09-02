@@ -1,17 +1,31 @@
 # Use an official Python runtime as a parent image
 FROM python:3.12-slim
 
+# Prevent Python from writing pyc files and enable unbuffered logs
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
 # Set the working directory in the container
 WORKDIR /app
 
-# Copy the requirements file into the container at /app
-COPY ./requirements.txt /app/
+# Install system dependencies (needed for psycopg2 and other libs)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       build-essential \
+       libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install any needed packages specified in requirements.txt
+# Copy the requirements file into the container
+COPY requirements.txt .
+
+# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application's code into the container at /app
-COPY . /app/
+# Copy the rest of the application code
+COPY . .
 
-# Command to run the application
+# Expose port for backend
+EXPOSE 8000
+
+# Run migrations and start the app
 CMD ["bash", "-c", "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000"]

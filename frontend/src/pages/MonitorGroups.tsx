@@ -15,8 +15,8 @@ import {
   MenuItem,
 } from '@mui/material';
 import { Add as AddIcon, Send as SendIcon } from '@mui/icons-material';
-import api, { endpoints } from '/src/api/Index';
-import { TelegramAccount } from '/src/Types/Index'; // Assuming you have this type defined
+import api, { endpoints } from '../api/Index';
+import type { TelegramAccount } from '../Types/Index'; // Assuming you have this type defined
 
 export default function MonitorGroups() {
   const [loading, setLoading] = useState(false);

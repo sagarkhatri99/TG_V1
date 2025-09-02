@@ -17,8 +17,8 @@ import {
   Radio,
 } from '@mui/material';
 import { Send as SendIcon, Upload as UploadIcon } from '@mui/icons-material';
-import api from '/src/api/Index';
-import { TelegramAccount } from '/src/Types/Index';
+import api from '../api/Index';
+import type { TelegramAccount } from '../Types/Index';
 
 type DmMethod = 'account' | 'bot';
 

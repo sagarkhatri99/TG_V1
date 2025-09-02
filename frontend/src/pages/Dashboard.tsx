@@ -22,8 +22,8 @@ import {
   Warning,
   Error,
 } from '@mui/icons-material';
-import api, { endpoints } from '/src/api/Index';
-import type { SystemStats, TelegramAccount } from '/src/Types/Index';
+import api, { endpoints } from '../api/Index';
+import type { SystemStats, TelegramAccount } from '../Types/Index';
 
 
 

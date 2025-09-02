@@ -13,7 +13,7 @@ import {
   StepLabel,
 } from '@mui/material';
 import { Download as DownloadIcon } from '@mui/icons-material';
-import api, { endpoints } from '/src/api/Index';
+import api, { endpoints } from '../api/Index';
 
 
 const steps = ['Enter Details', 'Verify OTP', 'Download CSV'];

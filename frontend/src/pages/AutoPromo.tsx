@@ -1,3 +1,4 @@
+import { FormControlLabel, Switch } from "@mui/material";
 import { useState, useEffect } from 'react';
 import {
   Box,
@@ -15,8 +16,8 @@ import {
   MenuItem,
 } from '@mui/material';
 import { Campaign as CampaignIcon } from '@mui/icons-material';
-import api, { endpoints } from '/src/api/Index';
-import { TelegramAccount } from '/src/Types/Index';
+import api, { endpoints } from '../api/Index';
+import type { TelegramAccount } from '../Types/Index';
 
 export default function AutoPromo() {
   const [loading, setLoading] = useState(false);
@@ -111,7 +112,7 @@ export default function AutoPromo() {
                 label="Target Group"
                 placeholder="@groupname or https://t.me/groupname"
                 value={formData.target_group}
-                onChange={(e) => setFormData({ ...formData, target_group: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, target_group: e.target.value })}
                 sx={{ mb: 2 }}
               />
             </Box>
@@ -123,7 +124,7 @@ export default function AutoPromo() {
                 label="Promotional Message"
                 placeholder="Your promotional message here..."
                 value={formData.promo_message}
-                onChange={(e) => setFormData({ ...formData, promo_message: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, promo_message: e.target.value })}
                 sx={{ mb: 2 }}
               />
             </Box>
@@ -132,7 +133,7 @@ export default function AutoPromo() {
                 control={
                   <Switch
                     checked={formData.use_random_interval}
-                    onChange={(e) => setFormData({ ...formData, use_random_interval: e.target.checked })}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, use_random_interval: e.target.checked })}
                   />
                 }
                 label="Use Random Interval"
@@ -146,14 +147,14 @@ export default function AutoPromo() {
                   label="Min Interval (s)"
                   type="number"
                   value={formData.min_interval}
-                  onChange={(e) => setFormData({ ...formData, min_interval: e.target.value })}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, min_interval: e.target.value })}
                 />
                 <TextField
                   fullWidth
                   label="Max Interval (s)"
                   type="number"
                   value={formData.max_interval}
-                  onChange={(e) => setFormData({ ...formData, max_interval: e.target.value })}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, max_interval: e.target.value })}
                 />
               </Box>
             ) : (
@@ -162,7 +163,7 @@ export default function AutoPromo() {
                 label="Interval"
                 type="number"
                 value={formData.interval_seconds}
-                onChange={(e) => setFormData({ ...formData, interval_seconds: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, interval_seconds: e.target.value })}
                 InputProps={{
                   endAdornment: <InputAdornment position="end">seconds</InputAdornment>,
                 }}
@@ -176,7 +177,7 @@ export default function AutoPromo() {
                 type="number"
                 placeholder="Optional"
                 value={formData.stop_after_hours}
-                onChange={(e) => setFormData({ ...formData, stop_after_hours: e.target.value })}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, stop_after_hours: e.target.value })}
                 sx={{ mb: 3 }}
               />
             </Box>
