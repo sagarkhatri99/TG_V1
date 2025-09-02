@@ -66,22 +66,16 @@ async def _mass_dm_runner(job: Job, db: Session):
             except FloodWaitError as e:
                 logger.warning(f"Flood wait error for job {job.id}: {e}. Retrying in {e.seconds} seconds.")
                 await asyncio.sleep(e.seconds)
-                # Retry sending the message
-                await client.send_message(uid, message)
-
-            except Exception as e:
-                logger.error(f"Failed to send message to {uid} for job {job.id}: {e}")
-                pass
+                await client.send_message(uid, message) # Retry sending
 
 @celery_app.task(bind=True, max_retries=3)
 def mass_dm_account_task(self, job_id: int):
     db: Session = SessionLocal()
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        logger.error(f"Job {job_id} not found.")
+        return
     try:
-        job = db.query(Job).filter(Job.id == job_id).first()
-        if not job:
-            logger.error(f"Job {job_id} not found.")
-            return
-
         job.status = 'running'
         job.started_at = datetime.utcnow()
         db.commit()

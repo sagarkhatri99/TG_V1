@@ -7,7 +7,6 @@ from pydantic import BaseModel
 from typing import Optional
 import shutil
 import os
-import tempfile
 from .tasks import mass_dm_account_task
 
 router = APIRouter()
@@ -29,31 +28,45 @@ async def create_mass_dm_account_job(
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
 
-    # Save the uploaded CSV file to a temporary location
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".csv", mode="wb") as temp_file:
-        shutil.copyfileobj(csv_file.file, temp_file)
-        temp_file_path = temp_file.name
-
-    job_config = {
+    # Step 1: Create job without file path to get an ID
+    initial_job_config = {
         "message": message,
         "stop_after_hours": stop_after_hours,
-        "csv_file_path": temp_file_path,
     }
-
     new_job = Job(
         telegram_account_id=account_id,
         job_type='mass_dm_account',
-        config=json.dumps(job_config),
+        config=json.dumps(initial_job_config),
         status='pending'
     )
     db.add(new_job)
     db.commit()
     db.refresh(new_job)
 
+    # Step 2: Define the file path using the job ID and save the file
+    upload_dir = "/app/uploads"
+    os.makedirs(upload_dir, exist_ok=True)
+    file_path = os.path.join(upload_dir, f"mass_dm_{new_job.id}.csv")
+
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(csv_file.file, buffer)
+    except Exception as e:
+        new_job.status = 'failed'
+        new_job.error_message = f"Failed to save uploaded file: {e}"
+        db.commit()
+        raise HTTPException(status_code=500, detail=f"Failed to save uploaded file: {e}")
+
+    # Step 3: Update the job config with the final file path
+    final_job_config = {
+        "message": message,
+        "stop_after_hours": stop_after_hours,
+        "csv_file_path": file_path,
+    }
+    new_job.config = json.dumps(final_job_config)
+    db.commit()
+
+    # Step 4: Dispatch the task
     mass_dm_account_task.delay(new_job.id)
 
     return {"job_id": new_job.id, "message": "Mass DM Account job created successfully."}
-
-# Old endpoints deprecated
-# from .service import start_dm_auth, send_mass_dm_account_with_otp
-# ...

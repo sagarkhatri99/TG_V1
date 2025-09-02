@@ -1,13 +1,29 @@
 from fastapi import APIRouter, Depends, HTTPException, Form
 from sqlalchemy.orm import Session
-from models import TelegramAccount
+from pydantic import BaseModel
+from typing import List, Optional
+import os
+
 from database import get_db
+from models import TelegramAccount, Job
 from core.session_manager import session_manager
 from core.ban_prevention import ban_prevention
 from datetime import datetime
 import random
 
 router = APIRouter()
+
+class AccountCreate(BaseModel):
+    nickname: str
+    phone_number: str
+    api_id: int
+    api_hash: str
+
+class AccountUpdate(BaseModel):
+    nickname: Optional[str] = None
+    phone_number: Optional[str] = None
+    api_id: Optional[int] = None
+    api_hash: Optional[str] = None
 
 @router.post("/create")
 async def create_account(
@@ -146,7 +162,16 @@ async def delete_account(account_id: int, db: Session = Depends(get_db)):
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
 
-    await session_manager.close_session(account_id)
+    # Delete associated jobs
+    db.query(Job).filter(Job.telegram_account_id == account_id).delete()
+
+    # Delete the account
     db.delete(account)
     db.commit()
-    return {"status": "deleted"}
+
+    # Delete the session file
+    session_path = os.path.join("/app/sessions", f"account_{account_id}.session")
+    if os.path.exists(session_path):
+        os.remove(session_path)
+
+    return {"status": "success", "message": "Account and all associated data deleted"}

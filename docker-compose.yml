@@ -6,7 +6,8 @@ services:
     ports:
       - "3000:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
   backend:
     build: ./backend
@@ -20,6 +21,12 @@ services:
     volumes:
       - ./backend/sessions:/app/sessions
       - ./backend/job_results:/app/job_results
+      - ./backend/uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   worker:
     build: ./backend
@@ -32,6 +39,7 @@ services:
     volumes:
       - ./backend/sessions:/app/sessions
       - ./backend/job_results:/app/job_results
+      - ./backend/uploads:/app/uploads
 
   db:
     image: postgres:13
