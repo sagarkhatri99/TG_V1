@@ -8,7 +8,7 @@ import logging
 import csv
 import os
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from telethon.errors import FloodWaitError
 
 logger = logging.getLogger(__name__)
@@ -29,6 +29,9 @@ async def _group_monitor_runner(job: Job, db: Session):
     found_messages = []
     processed_messages = 0
     error_messages = []
+    
+    # Set the time window to the last 7 days
+    offset_date = datetime.utcnow() - timedelta(days=7)
 
     async with client:
         for group_username in group_usernames:
@@ -40,6 +43,10 @@ async def _group_monitor_runner(job: Job, db: Session):
                 continue
 
             async for message in client.iter_messages(group, limit=limit):
+                # Stop if the message is older than the offset date
+                if message.date.replace(tzinfo=None) < offset_date:
+                    break
+
                 processed_messages += 1
                 msg_text = message.text or ""
                 sender_username = getattr(message.sender, 'username', None) if message.sender else None
@@ -69,7 +76,7 @@ async def _group_monitor_runner(job: Job, db: Session):
         writer.writeheader()
         for msg in found_messages:
             writer.writerow(msg)
-
+    
     if error_messages:
         job.error_message = f"Completed with some errors: {', '.join(error_messages)}"
         db.commit()
@@ -82,7 +89,7 @@ def group_monitor_task(self, job_id: int):
     if not job:
         logger.error(f"Job {job_id} not found.")
         return
-
+    
     account_id = job.telegram_account_id
 
     try:
@@ -99,15 +106,15 @@ def group_monitor_task(self, job_id: int):
         logger.info(f"Group monitor job {job.id} completed successfully.")
 
     except FloodWaitError as e:
-        logger.warning(f"Flood wait error for job {job_id}: {e}. Retrying in {e.seconds} seconds.")
+        logger.warning(f"Flood wait error for job {job.id}: {e}. Retrying in {e.seconds} seconds.")
         self.retry(countdown=e.seconds)
     except Exception as e:
-        logger.error(f"Error executing group monitor job {job_id}: {e}")
+        logger.error(f"Error executing group monitor job {job.id}: {e}")
         job.status = 'failed'
         job.error_message = str(e)
         db.commit()
     finally:
         if account_id:
-            logger.info(f"Disconnecting client for account {account_id} from job {job_id}")
+            logger.info(f"Disconnecting client for account {account_id} from job {job.id}")
             asyncio.run(session_manager.disconnect_client(account_id))
         db.close()
