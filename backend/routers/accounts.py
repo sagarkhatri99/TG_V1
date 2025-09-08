@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional
 import os
+import asyncio
 
 from database import get_db
 from models import TelegramAccount, Job
@@ -18,7 +19,7 @@ class AccountCreate(BaseModel):
     phone_number: str
     api_id: int
     api_hash: str
-
+    
 class AccountUpdate(BaseModel):
     nickname: Optional[str] = None
     phone_number: Optional[str] = None
@@ -58,29 +59,43 @@ async def send_verification_code(account_id: int, db: Session = Depends(get_db))
         raise HTTPException(status_code=404, detail="Account not found")
 
     try:
+        # Get a cached client to maintain the auth state
         client = await session_manager.get_client(account)
-        await client.connect()
         await client.send_code_request(account.phone_number)
+        # Add a small delay to allow for network operations like DC migration
+        await asyncio.sleep(1)
         return {"status": "code_sent", "message": "OTP sent to your phone"}
     except Exception as e:
+        # If something goes wrong, disconnect to ensure a fresh start next time
+        await session_manager.disconnect_client(account_id)
         raise HTTPException(status_code=400, detail=f"Failed to send code: {str(e)}")
 
 @router.post("/{account_id}/verify")
-async def verify_account(account_id: int, otp_code: str = Form(...), db: Session = Depends(get_db)):
+async def verify_account(account_id: int, otp_code: str = Form(...), password: Optional[str] = Form(None), db: Session = Depends(get_db)):
     account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
 
     try:
+        # Get the same cached client that sent the code
         client = await session_manager.get_client(account)
-        await client.sign_in(phone=account.phone_number, code=otp_code)
-        account.session_string = client.session.save()
+        
+        if password:
+            await client.sign_in(phone=account.phone_number, code=otp_code, password=password)
+        else:
+            await client.sign_in(phone=account.phone_number, code=otp_code)
+        
+        # On success, update the account and disconnect the client from the cache
         account.status = 'active'
         account.last_activity = datetime.utcnow()
         db.commit()
+        await session_manager.disconnect_client(account_id)
         return {"status": "verified", "account_id": account.id}
     except Exception as e:
+        # If verification fails, disconnect to ensure a fresh start next time
+        await session_manager.disconnect_client(account_id)
         raise HTTPException(status_code=400, detail=f"Verification failed: {str(e)}")
+
 
 @router.get("/list")
 async def list_accounts(db: Session = Depends(get_db)):
@@ -112,16 +127,16 @@ async def test_account_connection(account_id: int, db: Session = Depends(get_db)
 
     try:
         client = await session_manager.get_client(account)
-        await client.connect()
-        me = await client.get_me()
+        async with client:
+            me = await client.get_me()
+        
         account.last_activity = datetime.utcnow()
         db.commit()
-        return {
-            "status": "connected",
-            "user_id": me.id,
-            "username": me.username,
-            "first_name": me.first_name
-        }
+        
+        if me:
+            return {"status": "connected", "user_id": me.id, "username": me.username, "first_name": me.first_name}
+        else:
+            raise HTTPException(status_code=400, detail="Connection test failed: Could not get user info.")
     except Exception as e:
         account.status = 'error'
         db.commit()
@@ -135,7 +150,7 @@ async def pause_account(account_id: int, db: Session = Depends(get_db)):
 
     account.status = 'paused'
     db.commit()
-
+    
     from models import Job
     running_jobs = db.query(Job).filter(
         Job.telegram_account_id == account_id,
@@ -164,14 +179,17 @@ async def delete_account(account_id: int, db: Session = Depends(get_db)):
 
     # Delete associated jobs
     db.query(Job).filter(Job.telegram_account_id == account_id).delete()
-
-    # Delete the account
+    
+    # Disconnect and remove the client session
+    await session_manager.disconnect_client(account_id)
+    
+    # Delete the account from DB
     db.delete(account)
     db.commit()
-
+    
     # Delete the session file
     session_path = os.path.join("/app/sessions", f"account_{account_id}.session")
     if os.path.exists(session_path):
         os.remove(session_path)
-
+        
     return {"status": "success", "message": "Account and all associated data deleted"}
