@@ -85,7 +85,7 @@ async def _mass_dm_runner(job: Job, db: Session):
             except (ValueError, UserPrivacyRestrictedError, UserIsBotError, UserBlockedError, ChatWriteForbiddenError) as e:
                 logger.warning(f"Could not send message to {uid} for job {job.id}: {e.__class__.__name__}")
                 error_messages.append(f"Could not send to {uid}: {e.__class__.__name__}")
-            
+
             except Exception as e:
                 logger.error(f"An unexpected error occurred for job {job.id} sending to {uid}: {e}")
                 error_messages.append(f"Unexpected error for {uid}: {e.__class__.__name__}")
@@ -100,9 +100,7 @@ def mass_dm_account_task(self, job_id: int):
     if not job:
         logger.error(f"Job {job_id} not found.")
         return
-    
-    account_id = job.telegram_account_id
-    
+
     try:
         job.status = 'running'
         job.started_at = datetime.utcnow()
@@ -116,7 +114,7 @@ def mass_dm_account_task(self, job_id: int):
         db.commit()
 
     except MassDMError as e:
-        logger.error(f"Mass DM Account job {job.id} finished with errors: {e.errors}")
+
         job.status = 'failed'
         # Store a summary of errors
         error_summary = ", ".join(e.errors[:5])

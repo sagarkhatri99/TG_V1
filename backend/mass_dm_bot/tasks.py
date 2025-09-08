@@ -30,8 +30,6 @@ async def _mass_dm_bot_runner(job: Job, db: Session):
     if not bot_token:
         raise Exception("Bot token is missing from the job configuration.")
 
-    bot = Bot(token=bot_token)
-    
     try:
         user_data = pd.read_csv(csv_file_path)
         if 'chat_id' in user_data.columns:
@@ -62,26 +60,6 @@ async def _mass_dm_bot_runner(job: Job, db: Session):
             await bot.send_message(chat_id=uid, text=message)
             sent_count += 1
             job.progress = (sent_count / len(ids)) * 100
-            
-            if sent_count % 5 == 0 or sent_count == len(ids):
-                db.commit()
-
-            sleep_time = random.randint(5, 300)
-            logger.info(f"Job {job.id} sent message to {uid}, sleeping for {sleep_time} seconds.")
-            await asyncio.sleep(sleep_time)
-
-        except BadRequest as e:
-            error_msg = f"Invalid chat_id '{uid}': {e.message}"
-            logger.warning(f"Job {job.id}: {error_msg}")
-            error_messages.append(error_msg)
-        except Forbidden as e:
-            error_msg = f"Forbidden to send to '{uid}': {e.message} (Bot might be blocked by the user)"
-            logger.warning(f"Job {job.id}: {error_msg}")
-            error_messages.append(error_msg)
-        except TelegramError as e:
-            error_msg = f"A Telegram error occurred for chat_id '{uid}': {e.message}"
-            logger.error(f"Job {job.id}: {error_msg}")
-            error_messages.append(error_msg)
 
     if error_messages:
         raise MassDMBotError(f"Job completed with {len(error_messages)} errors.", error_messages)

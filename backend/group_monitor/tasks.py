@@ -8,7 +8,7 @@ import logging
 import csv
 import os
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from telethon.errors import FloodWaitError
 
 logger = logging.getLogger(__name__)
@@ -40,6 +40,10 @@ async def _group_monitor_runner(job: Job, db: Session):
                 continue
 
             async for message in client.iter_messages(group, limit=limit):
+                # Stop if the message is older than the offset date
+                if message.date.replace(tzinfo=None) < offset_date:
+                    break
+
                 processed_messages += 1
                 msg_text = message.text or ""
                 sender_username = getattr(message.sender, 'username', None) if message.sender else None
@@ -108,6 +112,6 @@ def group_monitor_task(self, job_id: int):
         db.commit()
     finally:
         if account_id:
-            logger.info(f"Disconnecting client for account {account_id} from job {job_id}")
+
             asyncio.run(session_manager.disconnect_client(account_id))
         db.close()

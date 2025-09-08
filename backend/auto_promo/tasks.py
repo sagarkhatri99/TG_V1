@@ -57,6 +57,7 @@ async def _auto_promo_runner(job: Job, db: Session):
                 job.progress = (job.progress or 0) + 1
                 db.commit()
 
+
             except ChatWriteForbiddenError as e:
                 raise Exception(f"Cannot send message to '{target_group}'. The account may not have permission to post, or it might be a channel where posting is restricted.") from e
             except FloodWaitError as e:
@@ -78,7 +79,7 @@ def auto_promo_task(self, job_id: int):
     if not job:
         logger.error(f"Job {job_id} not found.")
         return
-    
+
     account_id = job.telegram_account_id
 
     try:
