@@ -49,13 +49,14 @@ async def _auto_promo_runner(job: Job, db: Session):
                 logger.info(f"Auto promo job {job.id} reached its time limit of {stop_after_hours} hours.")
                 job.status = 'completed'
                 break
-
+            
             try:
                 await client.send_message(group, promo_message)
                 logger.info(f"Sent promo message to {target_group} for job {job.id}")
-
+                
                 job.progress = (job.progress or 0) + 1
                 db.commit()
+
 
             except ChatWriteForbiddenError as e:
                 raise Exception(f"Cannot send message to '{target_group}'. The account may not have permission to post, or it might be a channel where posting is restricted.") from e
@@ -94,7 +95,7 @@ def auto_promo_task(self, job_id: int):
         db.commit()
 
     except Exception as e:
-        logger.error(f"Error executing auto promo job {job_id}: {e}")
+        logger.error(f"Error executing auto promo job {job.id}: {e}")
         job.status = 'failed'
         job.error_message = str(e)
         db.commit()

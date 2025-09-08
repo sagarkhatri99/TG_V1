@@ -29,9 +29,6 @@ async def _group_monitor_runner(job: Job, db: Session):
     found_messages = []
     processed_messages = 0
     error_messages = []
-    
-    # Set the time window to the last 7 days
-    offset_date = datetime.utcnow() - timedelta(days=7)
 
     async with client:
         for group_username in group_usernames:
@@ -115,6 +112,6 @@ def group_monitor_task(self, job_id: int):
         db.commit()
     finally:
         if account_id:
-            logger.info(f"Disconnecting client for account {account_id} from job {job.id}")
+
             asyncio.run(session_manager.disconnect_client(account_id))
         db.close()

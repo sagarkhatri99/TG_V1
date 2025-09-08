@@ -101,8 +101,6 @@ def mass_dm_account_task(self, job_id: int):
         logger.error(f"Job {job_id} not found.")
         return
 
-    account_id = job.telegram_account_id
-
     try:
         job.status = 'running'
         job.started_at = datetime.utcnow()
@@ -116,7 +114,7 @@ def mass_dm_account_task(self, job_id: int):
         db.commit()
 
     except MassDMError as e:
-        logger.error(f"Mass DM Account job {job_id} finished with errors: {e.errors}")
+
         job.status = 'failed'
         # Store a summary of errors
         error_summary = ", ".join(e.errors[:5])
