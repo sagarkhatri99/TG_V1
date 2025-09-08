@@ -141,6 +141,9 @@ async def test_account_connection(account_id: int, db: Session = Depends(get_db)
         account.status = 'error'
         db.commit()
         raise HTTPException(status_code=400, detail=f"Connection test failed: {str(e)}")
+    finally:
+        # Always disconnect after a test to avoid leaving a stale client in the cache
+        await session_manager.disconnect_client(account_id)
 
 @router.post("/{account_id}/pause")
 async def pause_account(account_id: int, db: Session = Depends(get_db)):

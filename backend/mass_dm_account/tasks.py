@@ -10,9 +10,15 @@ import random
 import time
 from datetime import datetime, timedelta
 import asyncio
-from telethon.errors import FloodWaitError
+from telethon.errors import FloodWaitError, UserPrivacyRestrictedError, UserIsBotError, UserBlockedError, ChatWriteForbiddenError
 
 logger = logging.getLogger(__name__)
+
+class MassDMError(Exception):
+    """Custom exception for mass DM failures."""
+    def __init__(self, message, errors):
+        super().__init__(message)
+        self.errors = errors
 
 async def _mass_dm_runner(job: Job, db: Session):
     account = db.query(TelegramAccount).filter(TelegramAccount.id == job.telegram_account_id).first()
@@ -24,17 +30,21 @@ async def _mass_dm_runner(job: Job, db: Session):
     stop_after_hours = config.get('stop_after_hours')
     csv_file_path = config.get('csv_file_path')
 
-    user_data = pd.read_csv(csv_file_path)
-    if 'user_id' in user_data.columns:
-        ids = user_data['user_id'].tolist()
-    elif 'username' in user_data.columns:
-        ids = user_data['username'].tolist()
-    else:
-        raise Exception("CSV must have a 'user_id' or 'username' column.")
+    try:
+        user_data = pd.read_csv(csv_file_path)
+        if 'user_id' in user_data.columns:
+            ids = user_data['user_id'].tolist()
+        elif 'username' in user_data.columns:
+            ids = user_data['username'].tolist()
+        else:
+            raise Exception("CSV must have a 'user_id' or 'username' column.")
+    except FileNotFoundError:
+        raise Exception(f"CSV file not found at path: {csv_file_path}")
 
     client = await session_manager.get_client(account)
     stop_time = datetime.utcnow() + timedelta(hours=stop_after_hours) if stop_after_hours else None
     sent_count = 0
+    error_messages = []
     
     async with client:
         for i, uid in enumerate(ids):
@@ -56,7 +66,6 @@ async def _mass_dm_runner(job: Job, db: Session):
                 sent_count += 1
                 job.progress = (sent_count / len(ids)) * 100
                 
-                # Commit progress in batches of 5 or at the end
                 if (i + 1) % 5 == 0 or (i + 1) == len(ids):
                     db.commit()
 
@@ -67,7 +76,22 @@ async def _mass_dm_runner(job: Job, db: Session):
             except FloodWaitError as e:
                 logger.warning(f"Flood wait error for job {job.id}: {e}. Retrying in {e.seconds} seconds.")
                 await asyncio.sleep(e.seconds)
-                await client.send_message(uid, message) # Retry sending
+                # Retry sending after flood wait
+                try:
+                    await client.send_message(uid, message)
+                except Exception as retry_e:
+                    error_messages.append(f"Failed to send to {uid} after flood wait: {retry_e.__class__.__name__}")
+
+            except (ValueError, UserPrivacyRestrictedError, UserIsBotError, UserBlockedError, ChatWriteForbiddenError) as e:
+                logger.warning(f"Could not send message to {uid} for job {job.id}: {e.__class__.__name__}")
+                error_messages.append(f"Could not send to {uid}: {e.__class__.__name__}")
+            
+            except Exception as e:
+                logger.error(f"An unexpected error occurred for job {job.id} sending to {uid}: {e}")
+                error_messages.append(f"Unexpected error for {uid}: {e.__class__.__name__}")
+
+    if error_messages:
+        raise MassDMError(f"Job completed with {len(error_messages)} errors.", error_messages)
 
 @celery_app.task(bind=True, max_retries=3)
 def mass_dm_account_task(self, job_id: int):
@@ -76,6 +100,9 @@ def mass_dm_account_task(self, job_id: int):
     if not job:
         logger.error(f"Job {job_id} not found.")
         return
+    
+    account_id = job.telegram_account_id
+    
     try:
         job.status = 'running'
         job.started_at = datetime.utcnow()
@@ -88,10 +115,22 @@ def mass_dm_account_task(self, job_id: int):
         job.completed_at = datetime.utcnow()
         db.commit()
 
+    except MassDMError as e:
+        logger.error(f"Mass DM Account job {job.id} finished with errors: {e.errors}")
+        job.status = 'failed'
+        # Store a summary of errors
+        error_summary = ", ".join(e.errors[:5])
+        if len(e.errors) > 5:
+            error_summary += f" and {len(e.errors) - 5} more."
+        job.error_message = f"{e.message} Examples: {error_summary}"
+        db.commit()
     except Exception as e:
         logger.error(f"Error executing Mass DM Account job {job_id}: {e}")
         job.status = 'failed'
         job.error_message = str(e)
         db.commit()
     finally:
+        if account_id:
+            logger.info(f"Disconnecting client for account {account_id} from job {job_id}")
+            asyncio.run(session_manager.disconnect_client(account_id))
         db.close()

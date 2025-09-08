@@ -9,7 +9,7 @@ import random
 import time
 from datetime import datetime, timedelta
 import asyncio
-from telethon.errors import FloodWaitError
+from telethon.errors import FloodWaitError, ChatWriteForbiddenError
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,11 @@ async def _auto_promo_runner(job: Job, db: Session):
     stop_time = datetime.utcnow() + timedelta(hours=stop_after_hours) if stop_after_hours else None
 
     async with client:
-        group = await client.get_entity(target_group)
+        try:
+            group = await client.get_entity(target_group)
+        except (ValueError, TypeError) as e:
+            raise ValueError(f"Target group '{target_group}' not found or invalid. Please check the username or ID.") from e
+
         while True:
             db.refresh(job)
             db.refresh(account)
@@ -45,12 +49,20 @@ async def _auto_promo_runner(job: Job, db: Session):
                 logger.info(f"Auto promo job {job.id} reached its time limit of {stop_after_hours} hours.")
                 job.status = 'completed'
                 break
+            
+            try:
+                await client.send_message(group, promo_message)
+                logger.info(f"Sent promo message to {target_group} for job {job.id}")
+                
+                job.progress = (job.progress or 0) + 1
+                db.commit()
 
-            await client.send_message(group, promo_message)
-            logger.info(f"Sent promo message to {target_group} for job {job.id}")
-
-            job.progress = (job.progress or 0) + 1
-            db.commit() # This job runs infrequently, so committing every time is okay.
+            except ChatWriteForbiddenError as e:
+                raise Exception(f"Cannot send message to '{target_group}'. The account may not have permission to post, or it might be a channel where posting is restricted.") from e
+            except FloodWaitError as e:
+                logger.warning(f"Flood wait error for job {job.id}: {e}. Retrying in {e.seconds} seconds.")
+                await asyncio.sleep(e.seconds)
+                continue # Skip to the next iteration's sleep
 
             sleep_time = interval_seconds
             if use_random_interval and min_interval and max_interval:
@@ -66,6 +78,9 @@ def auto_promo_task(self, job_id: int):
     if not job:
         logger.error(f"Job {job_id} not found.")
         return
+    
+    account_id = job.telegram_account_id
+
     try:
         job.status = 'running'
         job.started_at = datetime.utcnow()
@@ -79,9 +94,12 @@ def auto_promo_task(self, job_id: int):
         db.commit()
 
     except Exception as e:
-        logger.error(f"Error executing auto promo job {job_id}: {e}")
+        logger.error(f"Error executing auto promo job {job.id}: {e}")
         job.status = 'failed'
         job.error_message = str(e)
         db.commit()
     finally:
+        if account_id:
+            logger.info(f"Disconnecting client for account {account_id} from job {job_id}")
+            asyncio.run(session_manager.disconnect_client(account_id))
         db.close()
