@@ -28,10 +28,17 @@ async def _group_monitor_runner(job: Job, db: Session):
 
     found_messages = []
     processed_messages = 0
+    error_messages = []
 
     async with client:
         for group_username in group_usernames:
-            group = await client.get_entity(group_username)
+            try:
+                group = await client.get_entity(group_username)
+            except (ValueError, TypeError):
+                logger.warning(f"Could not find group '{group_username}' for job {job.id}. Skipping.")
+                error_messages.append(f"Group '{group_username}' not found.")
+                continue
+
             async for message in client.iter_messages(group, limit=limit):
                 processed_messages += 1
                 msg_text = message.text or ""
@@ -52,6 +59,9 @@ async def _group_monitor_runner(job: Job, db: Session):
                     job.progress = (processed_messages / (limit * len(group_usernames))) * 100
                     db.commit()
 
+    if not found_messages and error_messages:
+        raise Exception(f"Job failed. Could not find any of the specified groups. Errors: {', '.join(error_messages)}")
+
     filename = f"/app/job_results/monitored_messages_job_{job.id}.csv"
     os.makedirs(os.path.dirname(filename), exist_ok=True)
     with open(filename, 'w', encoding='utf-8', newline='') as f:
@@ -60,6 +70,11 @@ async def _group_monitor_runner(job: Job, db: Session):
         for msg in found_messages:
             writer.writerow(msg)
 
+    if error_messages:
+        job.error_message = f"Completed with some errors: {', '.join(error_messages)}"
+        db.commit()
+
+
 @celery_app.task(bind=True, max_retries=3)
 def group_monitor_task(self, job_id: int):
     db: Session = SessionLocal()
@@ -67,6 +82,9 @@ def group_monitor_task(self, job_id: int):
     if not job:
         logger.error(f"Job {job_id} not found.")
         return
+
+    account_id = job.telegram_account_id
+
     try:
         job.status = 'running'
         job.started_at = datetime.utcnow()
@@ -89,4 +107,7 @@ def group_monitor_task(self, job_id: int):
         job.error_message = str(e)
         db.commit()
     finally:
+        if account_id:
+            logger.info(f"Disconnecting client for account {account_id} from job {job_id}")
+            asyncio.run(session_manager.disconnect_client(account_id))
         db.close()
