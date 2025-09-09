@@ -127,3 +127,43 @@ async def delete_job(
     db.commit()
     
     return {"status": "deleted"}
+
+import os
+from fastapi.responses import StreamingResponse
+
+@router.get("/download/{job_id}")
+def download_job_result(job_id: int, db: Session = Depends(get_db)):
+    """Download the result CSV for a completed job."""
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    if job.status != 'completed':
+        raise HTTPException(status_code=400, detail="Job is not yet complete.")
+
+    # Determine the filename based on the job type
+    if job.job_type == 'group_monitor':
+        filename = f"monitored_messages_job_{job_id}.csv"
+    elif job.job_type == 'scrape_users':
+        filename = f"scraped_users_job_{job_id}.csv"
+    else:
+        raise HTTPException(status_code=400, detail=f"Job type '{job.job_type}' does not produce a downloadable result.")
+
+    file_path = f"/app/job_results/{filename}"
+
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Result file not found. It may have been deleted or the job may have completed with no results.")
+
+    def file_iterator(path, chunk_size=8192):
+        with open(path, "rb") as f:
+            while True:
+                chunk = f.read(chunk_size)
+                if not chunk:
+                    break
+                yield chunk
+
+    return StreamingResponse(
+        file_iterator(file_path),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )

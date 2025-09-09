@@ -152,9 +152,9 @@ export default function Jobs() {
                         <IconButton onClick={() => handleDelete(job.id)} size="small" disabled={job.status === 'running'}>
                           <Delete />
                         </IconButton>
-                        {job.job_type === 'group_monitor' && job.status === 'completed' && (
+                        {(job.job_type === 'group_monitor' || job.job_type === 'scrape_users') && job.status === 'completed' && (
                           <IconButton
-                            onClick={() => window.open(`/api/group-monitor/download?job_id=${job.id}`, '_blank')}
+                            onClick={() => window.open(`http://localhost:8000/api/jobs/download/${job.id}`, '_blank')}
                             size="small"
                           >
                             <Download />

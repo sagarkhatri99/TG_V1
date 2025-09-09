@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -8,222 +8,113 @@ import {
   Button,
   Alert,
   CircularProgress,
-  Stepper,
-  Step,
-  StepLabel,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from '@mui/material';
-import { Download as DownloadIcon } from '@mui/icons-material';
+import { Send as SendIcon } from '@mui/icons-material';
 import api, { endpoints } from '../api/Index';
-
-
-const steps = ['Enter Details', 'Verify OTP', 'Download CSV'];
-
+import type { TelegramAccount } from '../Types/Index';
 
 export default function ScrapeUsers() {
-  const [activeStep, setActiveStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [alert, setAlert] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+  const [accounts, setAccounts] = useState<TelegramAccount[]>([]);
   
   const [formData, setFormData] = useState({
-    api_id: '',
-    api_hash: '',
-    phone_number: '',
-    code: '',
+    account_id: '',
     group_username: '',
   });
 
+  useEffect(() => {
+    const fetchAccounts = async () => {
+      try {
+        const response = await api.get(endpoints.accounts.list);
+        // Filter for active accounts as only they can be used for jobs
+        const activeAccounts = response.data.accounts.filter((acc: TelegramAccount) => acc.status === 'active');
+        setAccounts(activeAccounts);
+      } catch (error) {
+        setAlert({ type: 'error', message: 'Failed to fetch accounts.' });
+      }
+    };
+    fetchAccounts();
+  }, []);
 
-  const handleSendOTP = async () => {
+  const handleCreateJob = async () => {
     setLoading(true);
+    setAlert(null);
     try {
-      await api.post(endpoints.scraping.startAuth, {
-        api_id: parseInt(formData.api_id),
-        api_hash: formData.api_hash,
-        phone_number: formData.phone_number,
-      });
-      setAlert({ type: 'success', message: 'OTP sent to your phone!' });
-      setActiveStep(1);
-    } catch (error: any) {
-      setAlert({ type: 'error', message: error.response?.data?.detail || 'Failed to send OTP' });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-
-  const handleScrape = async () => {
-    setLoading(true);
-    try {
-      const response = await api.post(endpoints.scraping.verifyScrape, {
-        api_id: parseInt(formData.api_id),
-        api_hash: formData.api_hash,
-        phone_number: formData.phone_number,
-        code: formData.code,
+      const response = await api.post('/api/scrape-users/create-job', {
+        account_id: parseInt(formData.account_id),
         group_username: formData.group_username,
       });
-      setAlert({ type: 'success', message: response.data.message });
-      setActiveStep(2);
+      setAlert({ type: 'success', message: `Scrape job created successfully (Job ID: ${response.data.job_id}). You can monitor its progress on the Jobs page.` });
+      // Reset form
+      setFormData({ account_id: '', group_username: '' });
     } catch (error: any) {
-      setAlert({ type: 'error', message: error.response?.data?.detail || 'Scraping failed' });
+      setAlert({ type: 'error', message: error.response?.data?.detail || 'Failed to create job' });
     } finally {
       setLoading(false);
     }
   };
-
-
-  const handleDownload = () => {
-    const cleanPhone = formData.phone_number.replace('+', '');
-    const downloadUrl = `${endpoints.scraping.download}?phone_number=${cleanPhone}`;
-    window.open(`http://localhost:8000${downloadUrl}`, '_blank');
-  };
-
-
-  const handleReset = () => {
-    setActiveStep(0);
-    setFormData({
-      api_id: '',
-      api_hash: '',
-      phone_number: '',
-      code: '',
-      group_username: '',
-    });
-    setAlert(null);
-  };
-
 
   return (
     <Box>
       <Typography variant="h4" gutterBottom>
-        Scrape Users from Telegram Groups
+        Scrape Users from Group
       </Typography>
       <Typography variant="body1" color="text.secondary" gutterBottom>
-        Extract user information from Telegram groups and export to CSV.
+        Create a job to scrape all members from a public Telegram group. The results will be available for download on the Jobs page.
       </Typography>
 
       <Card sx={{ mt: 3, mb: 3 }}>
         <CardContent>
-          <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
-            {steps.map((label) => (
-              <Step key={label}>
-                <StepLabel>{label}</StepLabel>
-              </Step>
-            ))}
-          </Stepper>
-
           {alert && (
             <Alert severity={alert.type} onClose={() => setAlert(null)} sx={{ mb: 3 }}>
               {alert.message}
             </Alert>
           )}
 
-          {activeStep === 0 && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 3 }}>
-                <Box sx={{ flex: 1 }}>
-                  <TextField
-                    fullWidth
-                    label="API ID"
-                    type="number"
-                    value={formData.api_id}
-                    onChange={(e) => setFormData({ ...formData, api_id: e.target.value })}
-                    sx={{ mb: 2 }}
-                  />
-                </Box>
-                <Box sx={{ flex: 1 }}>
-                  <TextField
-                    fullWidth
-                    label="API Hash"
-                    value={formData.api_hash}
-                    onChange={(e) => setFormData({ ...formData, api_hash: e.target.value })}
-                    sx={{ mb: 2 }}
-                  />
-                </Box>
-              </Box>
-              <Box>
-                <TextField
-                  fullWidth
-                  label="Phone Number"
-                  placeholder="+1234567890"
-                  value={formData.phone_number}
-                  onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
-                  sx={{ mb: 2 }}
-                />
-              </Box>
-              <Box>
-                <TextField
-                  fullWidth
-                  label="Group Username"
-                  placeholder="@groupname or https://t.me/groupname"
-                  value={formData.group_username}
-                  onChange={(e) => setFormData({ ...formData, group_username: e.target.value })}
-                  sx={{ mb: 3 }}
-                />
-              </Box>
-              <Box>
-                <Button
-                  variant="contained"
-                  onClick={handleSendOTP}
-                  disabled={loading || !formData.api_id || !formData.api_hash || !formData.phone_number || !formData.group_username}
-                  fullWidth
-                >
-                  {loading ? <CircularProgress size={24} /> : 'Send OTP & Start Scraping'}
-                </Button>
-              </Box>
-            </Box>
-          )}
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, maxWidth: '600px' }}>
+            <FormControl fullWidth>
+              <InputLabel id="account-select-label">Select Account to Use</InputLabel>
+              <Select
+                labelId="account-select-label"
+                value={formData.account_id}
+                label="Select Account to Use"
+                onChange={(e) => setFormData({ ...formData, account_id: e.target.value })}
+              >
+                {accounts.length > 0 ? (
+                  accounts.map((account) => (
+                    <MenuItem key={account.id} value={account.id}>
+                      {account.nickname} ({account.phone_number})
+                    </MenuItem>
+                  ))
+                ) : (
+                  <MenuItem disabled>No active accounts found. Please add and verify an account first.</MenuItem>
+                )}
+              </Select>
+            </FormControl>
 
-          {activeStep === 1 && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <Box>
-                <Typography variant="body1" gutterBottom>
-                  Enter the OTP code sent to {formData.phone_number}
-                </Typography>
-                <TextField
-                  fullWidth
-                  label="OTP Code"
-                  value={formData.code}
-                  onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                  sx={{ mb: 3 }}
-                />
-                <Button
-                  variant="contained"
-                  onClick={handleScrape}
-                  disabled={loading || !formData.code}
-                  fullWidth
-                >
-                  {loading ? <CircularProgress size={24} /> : 'Verify & Scrape Users'}
-                </Button>
-              </Box>
-            </Box>
-          )}
+            <TextField
+              fullWidth
+              label="Target Group Username"
+              placeholder="@groupname or https://t.me/groupname"
+              value={formData.group_username}
+              onChange={(e) => setFormData({ ...formData, group_username: e.target.value })}
+            />
 
-          {activeStep === 2 && (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <Box>
-                <Typography variant="h6" gutterBottom>
-                  Scraping Complete! 🎉
-                </Typography>
-                <Typography variant="body1" gutterBottom>
-                  Your CSV file is ready for download.
-                </Typography>
-                <Box display="flex" gap={2}>
-                  <Button
-                    variant="contained"
-                    startIcon={<DownloadIcon />}
-                    onClick={handleDownload}
-                  >
-                    Download CSV
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    onClick={handleReset}
-                  >
-                    Scrape Another Group
-                  </Button>
-                </Box>
-              </Box>
-            </Box>
-          )}
+            <Button
+              variant="contained"
+              startIcon={<SendIcon />}
+              onClick={handleCreateJob}
+              disabled={loading || !formData.account_id || !formData.group_username}
+              fullWidth
+            >
+              {loading ? <CircularProgress size={24} /> : 'Create Scrape Job'}
+            </Button>
+          </Box>
         </CardContent>
       </Card>
     </Box>

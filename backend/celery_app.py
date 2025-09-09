@@ -13,6 +13,7 @@ celery_app = Celery(
         'group_monitor.tasks',
         'mass_dm_account.tasks',
         'mass_dm_bot.tasks',
+        'scrape_user_id.tasks',
     ]
 )
 

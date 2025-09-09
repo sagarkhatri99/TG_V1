@@ -88,33 +88,3 @@ async def create_group_monitor_job(request: GroupMonitorRequest, db: Session = D
 #     except Exception as e:
 #         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/download")
-def download_csv(job_id: int, db: Session = Depends(get_db)):
-    job = db.query(Job).filter(Job.id == job_id).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-
-    if job.status != 'completed':
-        raise HTTPException(status_code=400, detail="Job is not complete.")
-
-    filename = f"/app/job_results/monitored_messages_job_{job_id}.csv"
-
-    def file_iterator(file_path, chunk_size=8192):
-        try:
-            with open(file_path, "rb") as f:
-                while True:
-                    chunk = f.read(chunk_size)
-                    if not chunk:
-                        break
-                    yield chunk
-        except FileNotFoundError:
-            raise
-
-    try:
-        return StreamingResponse(
-            file_iterator(filename),
-            media_type="text/csv",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
-        )
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Result file not found.")

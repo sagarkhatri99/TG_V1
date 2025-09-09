@@ -1,45 +1,42 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from fastapi.responses import FileResponse
-from .service import start_scrape_auth, verify_and_scrape
+from sqlalchemy.orm import Session
+import json
+
+from database import get_db
+from models import Job, TelegramAccount
+from .tasks import scrape_users_task
 
 router = APIRouter()
 
-class StartAuthRequest(BaseModel):
-    api_id: int
-    api_hash: str
-    phone_number: str
-
-class VerifyScrapeRequest(BaseModel):
-    api_id: int
-    api_hash: str
-    phone_number: str
-    code: str
+class ScrapeUsersRequest(BaseModel):
+    account_id: int
     group_username: str
 
-@router.post("/start-auth")
-async def start_auth(request: StartAuthRequest):
-    try:
-        await start_scrape_auth(request.api_id, request.api_hash, request.phone_number)
-        return {"success": True, "message": "OTP sent to your phone"}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+@router.post("/create-job")
+async def create_scrape_users_job(request: ScrapeUsersRequest, db: Session = Depends(get_db)):
+    account = db.query(TelegramAccount).filter(TelegramAccount.id == request.account_id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
 
-@router.post("/verify-scrape")
-async def verify_scrape(request: VerifyScrapeRequest):
-    try:
-        count = await verify_and_scrape(
-            request.api_id,
-            request.api_hash,
-            request.phone_number,
-            request.code,
-            request.group_username
-        )
-        return {"message": f"Scraped {count} users from {request.group_username}."}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    if account.status != 'active':
+        raise HTTPException(status_code=400, detail=f"Account '{account.nickname}' is not active.")
 
-@router.get("/download")
-def download_csv(phone_number: str):
-    filename = f"participants_{phone_number}.csv"
-    return FileResponse(filename, media_type="text/csv", filename=filename)
+    job_config = {
+        "group_username": request.group_username,
+        "account_id": request.account_id
+    }
+
+    new_job = Job(
+        telegram_account_id=request.account_id,
+        job_type='scrape_users',
+        config=json.dumps(job_config),
+        status='pending'
+    )
+    db.add(new_job)
+    db.commit()
+    db.refresh(new_job)
+
+    scrape_users_task.delay(new_job.id)
+
+    return {"job_id": new_job.id, "message": "Scrape users job created successfully."}
