@@ -1,3 +1,8 @@
+export interface Proxy {
+  id: number;
+  proxy_url: string;
+}
+
 export interface TelegramAccount {
   id: number;
   nickname: string;
@@ -8,6 +13,7 @@ export interface TelegramAccount {
   last_activity: string;
   daily_message_count: number;
   created_at: string;
+  proxy?: Proxy;
 }
 
 export interface SystemStats {
