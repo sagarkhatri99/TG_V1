@@ -25,25 +25,42 @@ const queryClient = new QueryClient({
   },
 });
 
+import { AuthProvider, useAuth } from './context/AuthContext';
+import ProtectedRoute from './components/auth/ProtectedRoute';
+import LoginPage from './pages/Login';
+import RegisterPage from './pages/Register';
+import Proxies from './pages/Proxies';
+
+const AppRoutes = () => {
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
+      <Route element={<ProtectedRoute />}>
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/jobs" element={<Jobs />} />
+        <Route path="/accounts" element={<Accounts />} />
+        <Route path="/scrape" element={<ScrapeUsers />} />
+        <Route path="/monitor" element={<MonitorGroups />} />
+        <Route path="/mass-dm" element={<MassDM />} />
+        <Route path="/auto-promo" element={<AutoPromo />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="/help" element={<Help />} />
+        <Route path="/proxies" element={<Proxies />} />
+      </Route>
+    </Routes>
+  );
+};
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <Router>
-          <Layout>
-            <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/jobs" element={<Jobs />} />
-              <Route path="/accounts" element={<Accounts />} />
-              <Route path="/scrape" element={<ScrapeUsers />} />
-              <Route path="/monitor" element={<MonitorGroups />} />
-              <Route path="/mass-dm" element={<MassDM />} />
-              <Route path="/auto-promo" element={<AutoPromo />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="/help" element={<Help />} />
-            </Routes>
-          </Layout>
+          <AuthProvider>
+            <AppRoutes />
+          </AuthProvider>
         </Router>
       </ThemeProvider>
     </QueryClientProvider>

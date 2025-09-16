@@ -6,8 +6,9 @@ import os
 import asyncio
 
 from database import get_db
-from models import TelegramAccount, Job
+from models import TelegramAccount, Job, User
 from core.session_manager import session_manager
+from routers.auth import get_current_user
 from core.ban_prevention import ban_prevention
 from datetime import datetime
 import random
@@ -32,17 +33,27 @@ async def create_account(
     api_hash: str = Form(...),
     phone_number: str = Form(...),
     nickname: str = Form(...),
-    db: Session = Depends(get_db)
+    proxy_id: Optional[int] = Form(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
+    # Subscription plan limits
+    account_limit = 1 if current_user.subscription_plan == 'free' else 10
+    user_accounts_count = db.query(TelegramAccount).filter(TelegramAccount.user_id == current_user.id).count()
+    if user_accounts_count >= account_limit:
+        raise HTTPException(status_code=403, detail=f"Account limit of {account_limit} reached for your plan.")
+
     existing = db.query(TelegramAccount).filter(TelegramAccount.phone_number == phone_number).first()
     if existing:
-        raise HTTPException(status_code=400, detail="Account already exists")
+        raise HTTPException(status_code=400, detail="This phone number is already registered.")
 
     account = TelegramAccount(
+        user_id=current_user.id,
         phone_number=phone_number,
         api_id=str(api_id),
         api_hash=api_hash,
         nickname=nickname,
+        proxy_id=proxy_id,
         status='pending_verification',
         trust_score=random.randint(30, 60),
         created_at=datetime.utcnow()
@@ -52,11 +63,30 @@ async def create_account(
     db.refresh(account)
     return {"account_id": account.id, "status": "created", "next_step": "verify_phone"}
 
-@router.post("/{account_id}/send-code")
-async def send_verification_code(account_id: int, db: Session = Depends(get_db)):
-    account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id).first()
+class AccountUpdate(BaseModel):
+    proxy_id: Optional[int] = None
+    nickname: Optional[str] = None
+
+@router.patch("/{account_id}", response_model=AccountUpdate)
+async def update_account(account_id: int, account_update: AccountUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id, TelegramAccount.user_id == current_user.id).first()
     if not account:
-        raise HTTPException(status_code=404, detail="Account not found")
+        raise HTTPException(status_code=404, detail="Account not found or not owned by user")
+
+    if account_update.proxy_id is not None:
+        account.proxy_id = account_update.proxy_id
+    if account_update.nickname is not None:
+        account.nickname = account_update.nickname
+
+    db.commit()
+    db.refresh(account)
+    return account
+
+@router.post("/{account_id}/send-code")
+async def send_verification_code(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id, TelegramAccount.user_id == current_user.id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found or not owned by user")
 
     try:
         # Get a cached client to maintain the auth state
@@ -71,10 +101,10 @@ async def send_verification_code(account_id: int, db: Session = Depends(get_db))
         raise HTTPException(status_code=400, detail=f"Failed to send code: {str(e)}")
 
 @router.post("/{account_id}/verify")
-async def verify_account(account_id: int, otp_code: str = Form(...), password: Optional[str] = Form(None), db: Session = Depends(get_db)):
-    account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id).first()
+async def verify_account(account_id: int, otp_code: str = Form(...), password: Optional[str] = Form(None), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id, TelegramAccount.user_id == current_user.id).first()
     if not account:
-        raise HTTPException(status_code=404, detail="Account not found")
+        raise HTTPException(status_code=404, detail="Account not found or not owned by user")
 
     try:
         # Get the same cached client that sent the code
@@ -98,8 +128,8 @@ async def verify_account(account_id: int, otp_code: str = Form(...), password: O
 
 
 @router.get("/list")
-async def list_accounts(db: Session = Depends(get_db)):
-    accounts = db.query(TelegramAccount).all()
+async def list_accounts(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    accounts = db.query(TelegramAccount).filter(TelegramAccount.user_id == current_user.id).all()
     account_data = []
     for account in accounts:
         try:
@@ -120,10 +150,10 @@ async def list_accounts(db: Session = Depends(get_db)):
     return {"accounts": account_data}
 
 @router.post("/{account_id}/test")
-async def test_account_connection(account_id: int, db: Session = Depends(get_db)):
-    account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id).first()
+async def test_account_connection(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id, TelegramAccount.user_id == current_user.id).first()
     if not account:
-        raise HTTPException(status_code=404, detail="Account not found")
+        raise HTTPException(status_code=404, detail="Account not found or not owned by user")
 
     try:
         client = await session_manager.get_client(account)
@@ -146,10 +176,10 @@ async def test_account_connection(account_id: int, db: Session = Depends(get_db)
         await session_manager.disconnect_client(account_id)
 
 @router.post("/{account_id}/pause")
-async def pause_account(account_id: int, db: Session = Depends(get_db)):
-    account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id).first()
+async def pause_account(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id, TelegramAccount.user_id == current_user.id).first()
     if not account:
-        raise HTTPException(status_code=404, detail="Account not found")
+        raise HTTPException(status_code=404, detail="Account not found or not owned by user")
 
     account.status = 'paused'
     db.commit()
@@ -165,20 +195,20 @@ async def pause_account(account_id: int, db: Session = Depends(get_db)):
     return {"status": "paused", "jobs_affected": len(running_jobs)}
 
 @router.post("/{account_id}/resume")
-async def resume_account(account_id: int, db: Session = Depends(get_db)):
-    account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id).first()
+async def resume_account(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id, TelegramAccount.user_id == current_user.id).first()
     if not account:
-        raise HTTPException(status_code=404, detail="Account not found")
+        raise HTTPException(status_code=404, detail="Account not found or not owned by user")
 
     account.status = 'active'
     db.commit()
     return {"status": "resumed"}
 
 @router.delete("/{account_id}")
-async def delete_account(account_id: int, db: Session = Depends(get_db)):
-    account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id).first()
+async def delete_account(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id, TelegramAccount.user_id == current_user.id).first()
     if not account:
-        raise HTTPException(status_code=404, detail="Account not found")
+        raise HTTPException(status_code=404, detail="Account not found or not owned by user")
 
     # Delete associated jobs
     db.query(Job).filter(Job.telegram_account_id == account_id).delete()

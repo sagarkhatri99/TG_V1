@@ -11,6 +11,8 @@ from group_monitor.router import router as monitor_router
 from mass_dm_bot.router import router as dm_bot_router
 from mass_dm_account.router import router as dm_account_router
 from auto_promo.router import router as auto_promo_router
+from routers.auth import router as auth_router
+from routers.proxies import router as proxies_router
 
 from models import TelegramAccount, MessageLog, UserInteraction
 
@@ -103,6 +105,8 @@ app.include_router(monitor_router, prefix="/api/group-monitor", tags=["Group Mon
 app.include_router(dm_bot_router, prefix="/api/mass-dm-bot", tags=["Mass DM Bot"])
 app.include_router(dm_account_router, prefix="/api/mass-dm-account", tags=["Mass DM Account"])
 app.include_router(auto_promo_router, prefix="/api/auto_promo", tags=["Auto Promo"])
+app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
+app.include_router(proxies_router, prefix="/api/proxies", tags=["Proxies"])
 
 if __name__ == "__main__":
     import uvicorn

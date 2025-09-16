@@ -1,7 +1,8 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
-from models import Job, TelegramAccount
+from models import Job, TelegramAccount, User
 from database import get_db
+from routers.auth import get_current_user
 import json
 from pydantic import BaseModel
 from typing import List, Optional
@@ -18,10 +19,13 @@ class GroupMonitorRequest(BaseModel):
     limit: int = 100
 
 @router.post("/create-job")
-async def create_group_monitor_job(request: GroupMonitorRequest, db: Session = Depends(get_db)):
-    account = db.query(TelegramAccount).filter(TelegramAccount.id == request.account_id).first()
+async def create_group_monitor_job(request: GroupMonitorRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.subscription_plan != 'premium':
+        raise HTTPException(status_code=403, detail="Group monitoring is a premium feature.")
+
+    account = db.query(TelegramAccount).filter(TelegramAccount.id == request.account_id, TelegramAccount.user_id == current_user.id).first()
     if not account:
-        raise HTTPException(status_code=404, detail="Account not found")
+        raise HTTPException(status_code=404, detail="Account not found or not owned by user")
 
     job_config = {
         "group_usernames": request.group_usernames,
@@ -31,6 +35,7 @@ async def create_group_monitor_job(request: GroupMonitorRequest, db: Session = D
     }
 
     new_job = Job(
+        user_id=current_user.id,
         telegram_account_id=request.account_id,
         job_type='group_monitor',
         config=json.dumps(job_config),
@@ -89,10 +94,10 @@ async def create_group_monitor_job(request: GroupMonitorRequest, db: Session = D
 #         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/download")
-def download_csv(job_id: int, db: Session = Depends(get_db)):
-    job = db.query(Job).filter(Job.id == job_id).first()
+def download_csv(job_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    job = db.query(Job).join(TelegramAccount).filter(Job.id == job_id, TelegramAccount.user_id == current_user.id).first()
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail="Job not found or not owned by user")
 
     if job.status != 'completed':
         raise HTTPException(status_code=400, detail="Job is not complete.")

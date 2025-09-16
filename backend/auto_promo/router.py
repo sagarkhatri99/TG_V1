@@ -1,46 +1,55 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form
 from sqlalchemy.orm import Session
-from models import Job, TelegramAccount
+from models import Job, TelegramAccount, User
 from database import get_db
+from routers.auth import get_current_user
 import json
-from pydantic import BaseModel
+from typing import Optional
+import os
+import shutil
 from .tasks import auto_promo_task
 
 router = APIRouter()
 
-from typing import Optional
-
-class AutoPromoRequest(BaseModel):
-    account_id: int
-    target_group: str
-    promo_message: str
-    interval_seconds: Optional[int] = None
-    use_random_interval: bool = False
-    min_interval: Optional[int] = None
-    max_interval: Optional[int] = None
-    stop_after_hours: Optional[int] = None
-
 @router.post("/create-job")
-async def create_auto_promo_job(request: AutoPromoRequest, db: Session = Depends(get_db)):
-    account = db.query(TelegramAccount).filter(TelegramAccount.id == request.account_id).first()
-    if not account:
-        raise HTTPException(status_code=404, detail="Account not found")
+async def create_auto_promo_job(
+    account_id: int = Form(...),
+    target_group: str = Form(...),
+    promo_message: str = Form(...),
+    interval_seconds: Optional[int] = Form(None),
+    use_random_interval: bool = Form(False),
+    min_interval: Optional[int] = Form(None),
+    max_interval: Optional[int] = Form(None),
+    stop_after_hours: Optional[int] = Form(None),
+    rate_limit_per_hour: Optional[int] = Form(None),
+    image_file: Optional[UploadFile] = File(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.subscription_plan != 'premium':
+        raise HTTPException(status_code=403, detail="Auto Promo is a premium feature.")
 
-    if request.use_random_interval and (request.min_interval is None or request.max_interval is None):
+    account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id, TelegramAccount.user_id == current_user.id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found or not owned by user")
+
+    if use_random_interval and (min_interval is None or max_interval is None):
         raise HTTPException(status_code=400, detail="min_interval and max_interval are required for random interval.")
 
     job_config = {
-        "target_group": request.target_group,
-        "promo_message": request.promo_message,
-        "interval_seconds": request.interval_seconds,
-        "use_random_interval": request.use_random_interval,
-        "min_interval": request.min_interval,
-        "max_interval": request.max_interval,
-        "stop_after_hours": request.stop_after_hours,
+        "target_group": target_group,
+        "promo_message": promo_message,
+        "interval_seconds": interval_seconds,
+        "use_random_interval": use_random_interval,
+        "min_interval": min_interval,
+        "max_interval": max_interval,
+        "stop_after_hours": stop_after_hours,
+        "rate_limit_per_hour": rate_limit_per_hour,
     }
 
     new_job = Job(
-        telegram_account_id=request.account_id,
+        user_id=current_user.id,
+        telegram_account_id=account_id,
         job_type='auto_promo',
         config=json.dumps(job_config),
         status='pending'
@@ -48,6 +57,22 @@ async def create_auto_promo_job(request: AutoPromoRequest, db: Session = Depends
     db.add(new_job)
     db.commit()
     db.refresh(new_job)
+
+    if image_file:
+        upload_dir = "/app/uploads"
+        os.makedirs(upload_dir, exist_ok=True)
+        image_file_path = os.path.join(upload_dir, f"promo_image_{new_job.id}_{image_file.filename}")
+        try:
+            with open(image_file_path, "wb") as buffer:
+                shutil.copyfileobj(image_file.file, buffer)
+            job_config["image_file_path"] = image_file_path
+            new_job.config = json.dumps(job_config)
+            db.commit()
+        except Exception as e:
+            new_job.status = 'failed'
+            new_job.error_message = f"Failed to save image file: {e}"
+            db.commit()
+            raise HTTPException(status_code=500, detail=f"Failed to save image file: {e}")
 
     auto_promo_task.delay(new_job.id)
 

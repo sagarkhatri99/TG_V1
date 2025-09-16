@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Form, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from models import Job, TelegramAccount
+from models import Job, TelegramAccount, User
 from database import get_db
+from routers.auth import get_current_user
 import json
 from datetime import datetime
 
@@ -12,13 +13,18 @@ router = APIRouter()
 async def list_jobs(
     account_id: Optional[int] = None,
     status: Optional[str] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """List jobs with optional filters"""
     
-    query = db.query(Job)
+    query = db.query(Job).filter(Job.user_id == current_user.id)
     
     if account_id:
+        # Also ensure the requested account belongs to the user
+        account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id, TelegramAccount.user_id == current_user.id).first()
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found or not owned by user")
         query = query.filter(Job.telegram_account_id == account_id)
     
     if status:
@@ -46,13 +52,14 @@ async def list_jobs(
 @router.get("/{job_id}")
 async def get_job(
     job_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """Get job details"""
     
-    job = db.query(Job).filter(Job.id == job_id).first()
+    job = db.query(Job).filter(Job.id == job_id, Job.user_id == current_user.id).first()
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail="Job not found or not owned by user")
     
     config = {}
     try:
@@ -77,13 +84,14 @@ async def get_job(
 @router.post("/{job_id}/pause")
 async def pause_job(
     job_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """Pause a job"""
     
-    job = db.query(Job).filter(Job.id == job_id).first()
+    job = db.query(Job).filter(Job.id == job_id, Job.user_id == current_user.id).first()
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail="Job not found or not owned by user")
     
     if job.status not in ['running', 'pending']:
         raise HTTPException(status_code=400, detail="Job cannot be paused")
@@ -96,13 +104,14 @@ async def pause_job(
 @router.post("/{job_id}/resume")
 async def resume_job(
     job_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """Resume a paused job"""
     
-    job = db.query(Job).filter(Job.id == job_id).first()
+    job = db.query(Job).filter(Job.id == job_id, Job.user_id == current_user.id).first()
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail="Job not found or not owned by user")
     
     if job.status != 'paused':
         raise HTTPException(status_code=400, detail="Job is not paused")
@@ -115,13 +124,14 @@ async def resume_job(
 @router.delete("/{job_id}")
 async def delete_job(
     job_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """Delete a job"""
     
-    job = db.query(Job).filter(Job.id == job_id).first()
+    job = db.query(Job).filter(Job.id == job_id, Job.user_id == current_user.id).first()
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail="Job not found or not owned by user")
     
     db.delete(job)
     db.commit()

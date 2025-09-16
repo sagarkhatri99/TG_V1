@@ -29,6 +29,12 @@ async def _mass_dm_runner(job: Job, db: Session):
     message = config.get('message')
     stop_after_hours = config.get('stop_after_hours')
     csv_file_path = config.get('csv_file_path')
+    image_file_path = config.get('image_file_path')
+    rate_limit_per_hour = config.get('rate_limit_per_hour')
+    delay_seconds = config.get('delay_seconds')
+
+    if image_file_path and not os.path.exists(image_file_path):
+        raise FileNotFoundError(f"Image file not found at {image_file_path}")
 
     try:
         user_data = pd.read_csv(csv_file_path)
@@ -45,6 +51,7 @@ async def _mass_dm_runner(job: Job, db: Session):
     stop_time = datetime.utcnow() + timedelta(hours=stop_after_hours) if stop_after_hours else None
     sent_count = 0
     error_messages = []
+    message_timestamps = []
     
     async with client:
         for i, uid in enumerate(ids):
@@ -61,15 +68,30 @@ async def _mass_dm_runner(job: Job, db: Session):
                 job.status = 'completed'
                 break
 
+            # Rate limiting
+            if rate_limit_per_hour:
+                current_time = datetime.utcnow()
+                one_hour_ago = current_time - timedelta(hours=1)
+                message_timestamps = [t for t in message_timestamps if t > one_hour_ago]
+                if len(message_timestamps) >= rate_limit_per_hour:
+                    logger.info(f"Job {job.id} reached rate limit of {rate_limit_per_hour}/hour. Waiting...")
+                    await asyncio.sleep(60) # Wait a minute before checking again
+                    continue
+
             try:
-                await client.send_message(uid, message)
+                if image_file_path:
+                    await client.send_file(uid, image_file_path, caption=message)
+                else:
+                    await client.send_message(uid, message)
+
                 sent_count += 1
+                message_timestamps.append(datetime.utcnow())
                 job.progress = (sent_count / len(ids)) * 100
                 
                 if (i + 1) % 5 == 0 or (i + 1) == len(ids):
                     db.commit()
 
-                sleep_time = random.randint(5, 300)
+                sleep_time = delay_seconds if delay_seconds is not None else random.randint(5, 300)
                 logger.info(f"Job {job.id} sent message to {uid}, sleeping for {sleep_time} seconds.")
                 await asyncio.sleep(sleep_time)
 
@@ -78,7 +100,10 @@ async def _mass_dm_runner(job: Job, db: Session):
                 await asyncio.sleep(e.seconds)
                 # Retry sending after flood wait
                 try:
-                    await client.send_message(uid, message)
+                    if image_file_path:
+                        await client.send_file(uid, image_file_path, caption=message)
+                    else:
+                        await client.send_message(uid, message)
                 except Exception as retry_e:
                     error_messages.append(f"Failed to send to {uid} after flood wait: {retry_e.__class__.__name__}")
 

@@ -27,10 +27,21 @@ class SessionManager:
     async def _create_client(self, account):
         """Create a new client instance."""
         session_path = os.path.join(self.session_folder, f"account_{account.id}.session")
+
+        proxy_details = None
+        if account.proxy:
+            try:
+                from urllib.parse import urlparse
+                parsed_url = urlparse(account.proxy.proxy_url)
+                proxy_details = (parsed_url.scheme, parsed_url.hostname, parsed_url.port)
+            except Exception as e:
+                logger.error(f"Failed to parse proxy URL {account.proxy.proxy_url}: {e}")
+
         client = TelegramClient(
             session_path,
             int(account.api_id),
             account.api_hash,
+            proxy=proxy_details,
             device_model=self._generate_device_model(),
             system_version=self._generate_system_version(),
             app_version=self._generate_app_version(),

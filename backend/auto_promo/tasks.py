@@ -9,6 +9,7 @@ import random
 import time
 from datetime import datetime, timedelta
 import asyncio
+import os
 from telethon.errors import FloodWaitError, ChatWriteForbiddenError
 
 logger = logging.getLogger(__name__)
@@ -21,14 +22,20 @@ async def _auto_promo_runner(job: Job, db: Session):
     config = json.loads(job.config)
     target_group = config.get('target_group')
     promo_message = config.get('promo_message')
+    image_file_path = config.get('image_file_path')
+    rate_limit_per_hour = config.get('rate_limit_per_hour')
     interval_seconds = config.get('interval_seconds', 3600)
     use_random_interval = config.get('use_random_interval', False)
     min_interval = config.get('min_interval')
     max_interval = config.get('max_interval')
     stop_after_hours = config.get('stop_after_hours')
 
+    if image_file_path and not os.path.exists(image_file_path):
+        raise FileNotFoundError(f"Image file not found at {image_file_path}")
+
     client = await session_manager.get_client(account)
     stop_time = datetime.utcnow() + timedelta(hours=stop_after_hours) if stop_after_hours else None
+    message_timestamps = []
 
     async with client:
         try:
@@ -49,9 +56,24 @@ async def _auto_promo_runner(job: Job, db: Session):
                 logger.info(f"Auto promo job {job.id} reached its time limit of {stop_after_hours} hours.")
                 job.status = 'completed'
                 break
+
+            # Rate limiting
+            if rate_limit_per_hour:
+                current_time = datetime.utcnow()
+                one_hour_ago = current_time - timedelta(hours=1)
+                message_timestamps = [t for t in message_timestamps if t > one_hour_ago]
+                if len(message_timestamps) >= rate_limit_per_hour:
+                    logger.info(f"Job {job.id} reached rate limit of {rate_limit_per_hour}/hour. Waiting...")
+                    await asyncio.sleep(60) # Wait a minute before checking again
+                    continue
             
             try:
-                await client.send_message(group, promo_message)
+                if image_file_path:
+                    await client.send_file(group, image_file_path, caption=promo_message)
+                else:
+                    await client.send_message(group, promo_message)
+
+                message_timestamps.append(datetime.utcnow())
                 logger.info(f"Sent promo message to {target_group} for job {job.id}")
                 
                 job.progress = (job.progress or 0) + 1

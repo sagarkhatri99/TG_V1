@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Box,
   CssBaseline,
@@ -15,6 +15,7 @@ import {
   ListItemText,
   Avatar,
   Chip,
+  Button,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -25,8 +26,11 @@ import {
   Send as SendIcon,
   Campaign as PromoIcon,
   Work as WorkIcon,
+  Logout as LogoutIcon,
+  VpnKey as VpnKeyIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 
 const drawerWidth = 240;
 
@@ -34,27 +38,37 @@ interface LayoutProps {
   children: React.ReactNode;
 }
 
-const menuItems = [
-  { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
-  { text: 'Jobs', icon: <WorkIcon />, path: '/jobs' },
-  { text: 'Accounts', icon: <AccountIcon />, path: '/accounts' },
-  { text: 'Scrape Users', icon: <SearchIcon />, path: '/scrape' },
-  { text: 'Monitor Groups', icon: <MonitorIcon />, path: '/monitor' },
-  { text: 'Mass DM', icon: <SendIcon />, path: '/mass-dm' },
-  { text: 'Auto Promo', icon: <PromoIcon />, path: '/auto-promo' },
+const allMenuItems = [
+  { text: 'Dashboard', icon: <DashboardIcon />, path: '/', plan: 'free' },
+  { text: 'Jobs', icon: <WorkIcon />, path: '/jobs', plan: 'free' },
+  { text: 'Accounts', icon: <AccountIcon />, path: '/accounts', plan: 'free' },
+  { text: 'Proxies', icon: <VpnKeyIcon />, path: '/proxies', plan: 'free' },
+  { text: 'Scrape Users', icon: <SearchIcon />, path: '/scrape', plan: 'premium' },
+  { text: 'Monitor Groups', icon: <MonitorIcon />, path: '/monitor', plan: 'premium' },
+  { text: 'Mass DM', icon: <SendIcon />, path: '/mass-dm', plan: 'premium' },
+  { text: 'Auto Promo', icon: <PromoIcon />, path: '/auto-promo', plan: 'premium' },
 ];
 
 export default function Layout({ children }: LayoutProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, logout, isAuthenticated } = useAuth();
+
+  const menuItems = useMemo(() => {
+    if (!user) return [];
+    if (user.subscription_plan === 'premium') {
+      return allMenuItems;
+    }
+    return allMenuItems.filter(item => item.plan === 'free');
+  }, [user]);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
   };
 
   const drawer = (
-    <div>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Toolbar>
         <Box display="flex" alignItems="center" gap={2}>
           <Avatar sx={{ bgcolor: 'primary.main' }}>T</Avatar>
@@ -64,7 +78,7 @@ export default function Layout({ children }: LayoutProps) {
         </Box>
       </Toolbar>
       <Divider />
-      <List>
+      <List sx={{ flexGrow: 1 }}>
         {menuItems.map((item) => (
           <ListItem key={item.text} disablePadding>
             <ListItemButton
@@ -89,7 +103,13 @@ export default function Layout({ children }: LayoutProps) {
           </ListItem>
         ))}
       </List>
-    </div>
+      <Divider />
+      <Box sx={{ p: 2 }}>
+        <Button variant="contained" startIcon={<LogoutIcon />} onClick={logout} fullWidth>
+          Logout
+        </Button>
+      </Box>
+    </Box>
   );
 
   return (

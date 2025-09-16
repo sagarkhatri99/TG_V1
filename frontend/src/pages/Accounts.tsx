@@ -33,27 +33,43 @@ import { format } from 'date-fns';
 import api, { endpoints } from '../api/Index';
 import type { TelegramAccount, CreateAccountRequest } from '../Types/Index';
 
+interface Proxy {
+  id: number;
+  proxy_url: string;
+}
 
 export default function Accounts() {
   const [accounts, setAccounts] = useState<TelegramAccount[]>([]);
+  const [proxies, setProxies] = useState<Proxy[]>([]);
   const [loading, setLoading] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [verifyDialogOpen, setVerifyDialogOpen] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState<TelegramAccount | null>(null);
   const [alert, setAlert] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   
-  const [createForm, setCreateForm] = useState<CreateAccountRequest>({
+  const [createForm, setCreateForm] = useState<CreateAccountRequest & { proxy_id?: number | '' }>({
     api_id: 0,
     api_hash: '',
     phone_number: '',
     nickname: '',
+    proxy_id: '',
   });
   const [otpCode, setOtpCode] = useState('');
 
 
   useEffect(() => {
     fetchAccounts();
+    fetchProxies();
   }, []);
+
+  const fetchProxies = async () => {
+    try {
+      const response = await api.get('/api/proxies/list');
+      setProxies(response.data);
+    } catch (error) {
+      console.error('Failed to fetch proxies', error);
+    }
+  };
 
 
   const fetchAccounts = async () => {
@@ -223,6 +239,7 @@ export default function Accounts() {
                   <TableCell>Account</TableCell>
                   <TableCell>Phone</TableCell>
                   <TableCell>Status</TableCell>
+                  <TableCell>Proxy</TableCell>
                   <TableCell>Trust Score</TableCell>
                   <TableCell>Risk Score</TableCell>
                   <TableCell>Messages Today</TableCell>
@@ -247,6 +264,7 @@ export default function Accounts() {
                         size="small"
                       />
                     </TableCell>
+                    <TableCell>{account.proxy?.proxy_url || 'None'}</TableCell>
                     <TableCell>
                       <Chip 
                         label={account.trust_score}
@@ -343,6 +361,24 @@ export default function Accounts() {
                   onChange={(e) => setCreateForm({ ...createForm, nickname: e.target.value })}
                 />
               </Box>
+              <FormControl fullWidth>
+                <InputLabel id="proxy-select-label">Proxy (Optional)</InputLabel>
+                <Select
+                  labelId="proxy-select-label"
+                  value={createForm.proxy_id}
+                  label="Proxy (Optional)"
+                  onChange={(e) => setCreateForm({ ...createForm, proxy_id: e.target.value as number | '' })}
+                >
+                  <MenuItem value="">
+                    <em>None</em>
+                  </MenuItem>
+                  {proxies.map((proxy) => (
+                    <MenuItem key={proxy.id} value={proxy.id}>
+                      {proxy.proxy_url}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Box>
           </Box>
         </DialogContent>

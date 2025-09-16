@@ -28,12 +28,15 @@ export default function MassDM() {
   const [accounts, setAccounts] = useState<TelegramAccount[]>([]);
   const [dmMethod, setDmMethod] = useState<DmMethod>('account');
   const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
   
   const [formData, setFormData] = useState({
     account_id: '',
     bot_token: '',
     message: '',
     stop_after_hours: '',
+    rate_limit_per_hour: '20',
+    delay_seconds: '60',
   });
 
   useEffect(() => {
@@ -50,9 +53,13 @@ export default function MassDM() {
     }
   }, [dmMethod]);
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>, fileType: 'csv' | 'image') => {
     if (event.target.files) {
-      setCsvFile(event.target.files[0]);
+      if (fileType === 'csv') {
+        setCsvFile(event.target.files[0]);
+      } else {
+        setImageFile(event.target.files[0]);
+      }
     }
   };
 
@@ -68,8 +75,17 @@ export default function MassDM() {
     const apiFormData = new FormData();
     apiFormData.append('message', formData.message);
     apiFormData.append('csv_file', csvFile);
+    if (imageFile) {
+      apiFormData.append('image_file', imageFile);
+    }
     if (formData.stop_after_hours) {
       apiFormData.append('stop_after_hours', formData.stop_after_hours);
+    }
+    if (formData.rate_limit_per_hour) {
+      apiFormData.append('rate_limit_per_hour', formData.rate_limit_per_hour);
+    }
+    if (formData.delay_seconds) {
+      apiFormData.append('delay_seconds', formData.delay_seconds);
     }
 
     let url = '';
@@ -158,9 +174,19 @@ export default function MassDM() {
               startIcon={<UploadIcon />}
             >
               Upload CSV
-              <input type="file" hidden accept=".csv" onChange={handleFileChange} />
+              <input type="file" hidden accept=".csv" onChange={(e) => handleFileChange(e, 'csv')} />
             </Button>
-            {csvFile && <Typography variant="body2">{csvFile.name}</Typography>}
+            {csvFile && <Typography variant="body2">CSV: {csvFile.name}</Typography>}
+
+            <Button
+              variant="outlined"
+              component="label"
+              startIcon={<UploadIcon />}
+            >
+              Upload Image (Optional)
+              <input type="file" hidden accept="image/*" onChange={(e) => handleFileChange(e, 'image')} />
+            </Button>
+            {imageFile && <Typography variant="body2">Image: {imageFile.name}</Typography>}
 
             <TextField
               fullWidth
@@ -170,6 +196,25 @@ export default function MassDM() {
               value={formData.stop_after_hours}
               onChange={(e) => setFormData({ ...formData, stop_after_hours: e.target.value })}
             />
+
+            <Box sx={{ display: 'flex', gap: 2 }}>
+                <TextField
+                  fullWidth
+                  label="Rate Limit (msg/hr)"
+                  type="number"
+                  placeholder="e.g., 20"
+                  value={formData.rate_limit_per_hour}
+                  onChange={(e) => setFormData({ ...formData, rate_limit_per_hour: e.target.value })}
+                />
+                <TextField
+                  fullWidth
+                  label="Delay (seconds)"
+                  type="number"
+                  placeholder="e.g., 60"
+                  value={formData.delay_seconds}
+                  onChange={(e) => setFormData({ ...formData, delay_seconds: e.target.value })}
+                />
+            </Box>
 
             <Button
               variant="contained"

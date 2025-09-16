@@ -13,6 +13,7 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     
     telegram_accounts = relationship("TelegramAccount", back_populates="user")
+    jobs = relationship("Job", back_populates="user")
 
 class TelegramAccount(Base):
     __tablename__ = "telegram_accounts"
@@ -63,7 +64,9 @@ class Job(Base):
     __tablename__ = "jobs"
     
     id = Column(Integer, primary_key=True, index=True)
-    telegram_account_id = Column(Integer, ForeignKey("telegram_accounts.id"))
+    user_id = Column(Integer, ForeignKey("users.id"))
+    user = relationship("User", back_populates="jobs")
+    telegram_account_id = Column(Integer, ForeignKey("telegram_accounts.id"), nullable=True)
     job_type = Column(String(50))
     config = Column(Text)
     status = Column(String(20), default="pending")
