@@ -94,8 +94,8 @@ const LoginPage: React.FC = () => {
                     >
                         Sign In
                     </Button>
-                    <Grid container>
-                        <Grid item>
+                    <Grid container spacing={2} justifyContent="center">
+                        <Grid item xs={12}>
                             <Link href="/register" variant="body2">
                                 {"Don't have an account? Sign Up"}
                             </Link>

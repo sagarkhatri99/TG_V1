@@ -29,7 +29,7 @@ import {
   Logout as LogoutIcon,
   VpnKey as VpnKeyIcon,
 } from '@mui/icons-material';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
 const drawerWidth = 240;
@@ -54,6 +54,10 @@ export default function Layout({ children }: LayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout, isAuthenticated } = useAuth();
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
 
   const menuItems = useMemo(() => {
     if (!user) return [];
@@ -94,9 +98,8 @@ export default function Layout({ children }: LayoutProps) {
                   '& .MuiListItemIcon-root': {
                     color: 'white',
                   },
-                },
-              }}
-            >
+                }}
+              >
               <ListItemIcon>{item.icon}</ListItemIcon>
               <ListItemText primary={item.text} />
             </ListItemButton>

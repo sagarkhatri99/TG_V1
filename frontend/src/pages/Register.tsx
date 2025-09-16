@@ -92,8 +92,8 @@ const RegisterPage: React.FC = () => {
                     >
                         Register
                     </Button>
-                    <Grid container justifyContent="flex-end">
-                        <Grid item>
+                    <Grid container spacing={2} justifyContent="flex-end">
+                        <Grid item xs={12}>
                             <Link href="/login" variant="body2">
                                 Already have an account? Sign in
                             </Link>
