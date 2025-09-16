@@ -1,34 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import {
-  Box,
-  CssBaseline,
-  Drawer,
-  AppBar,
-  Toolbar,
-  List,
-  Typography,
-  Divider,
-  IconButton,
-  ListItem,
-  ListItemButton,
-  ListItemIcon,
-  ListItemText,
-  Avatar,
-  Chip,
-  Button,
-} from '@mui/material';
-import {
-  Menu as MenuIcon,
-  Dashboard as DashboardIcon,
-  AccountCircle as AccountIcon,
-  Search as SearchIcon,
-  Visibility as MonitorIcon,
-  Send as SendIcon,
-  Campaign as PromoIcon,
-  Work as WorkIcon,
-  Logout as LogoutIcon,
-  VpnKey as VpnKeyIcon,
-} from '@mui/icons-material';
+import { Box, CssBaseline, Drawer, AppBar, Toolbar, List, Typography, Divider, IconButton, ListItem, ListItemButton, ListItemText, Button } from '@mui/material';
+import { Menu as MenuIcon, Dashboard as DashboardIcon, Logout as LogoutIcon } from '@mui/icons-material';
 import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
@@ -40,13 +12,6 @@ interface LayoutProps {
 
 const allMenuItems = [
   { text: 'Dashboard', icon: <DashboardIcon />, path: '/', plan: 'free' },
-  { text: 'Jobs', icon: <WorkIcon />, path: '/jobs', plan: 'free' },
-  { text: 'Accounts', icon: <AccountIcon />, path: '/accounts', plan: 'free' },
-  { text: 'Proxies', icon: <VpnKeyIcon />, path: '/proxies', plan: 'free' },
-  { text: 'Scrape Users', icon: <SearchIcon />, path: '/scrape', plan: 'premium' },
-  { text: 'Monitor Groups', icon: <MonitorIcon />, path: '/monitor', plan: 'premium' },
-  { text: 'Mass DM', icon: <SendIcon />, path: '/mass-dm', plan: 'premium' },
-  { text: 'Auto Promo', icon: <PromoIcon />, path: '/auto-promo', plan: 'premium' },
 ];
 
 export default function Layout({ children }: LayoutProps) {
@@ -61,10 +26,7 @@ export default function Layout({ children }: LayoutProps) {
 
   const menuItems = useMemo(() => {
     if (!user) return [];
-    if (user.subscription_plan === 'premium') {
-      return allMenuItems;
-    }
-    return allMenuItems.filter(item => item.plan === 'free');
+    return allMenuItems;
   }, [user]);
 
   const handleDrawerToggle = () => {
@@ -74,12 +36,9 @@ export default function Layout({ children }: LayoutProps) {
   const drawer = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Toolbar>
-        <Box display="flex" alignItems="center" gap={2}>
-          <Avatar sx={{ bgcolor: 'primary.main' }}>T</Avatar>
-          <Typography variant="h6" noWrap component="div">
-            TG Tools
-          </Typography>
-        </Box>
+        <Typography variant="h6" noWrap component="div">
+          TG Tools
+        </Typography>
       </Toolbar>
       <Divider />
       <List sx={{ flexGrow: 1 }}>
@@ -88,19 +47,7 @@ export default function Layout({ children }: LayoutProps) {
             <ListItemButton
               selected={location.pathname === item.path}
               onClick={() => navigate(item.path)}
-              sx={{
-                '&.Mui-selected': {
-                  backgroundColor: 'primary.main',
-                  color: 'white',
-                  '&:hover': {
-                    backgroundColor: 'primary.dark',
-                  },
-                  '& .MuiListItemIcon-root': {
-                    color: 'white',
-                  },
-                }}
-              >
-              <ListItemIcon>{item.icon}</ListItemIcon>
+            >
               <ListItemText primary={item.text} />
             </ListItemButton>
           </ListItem>
@@ -123,9 +70,6 @@ export default function Layout({ children }: LayoutProps) {
         sx={{
           width: { sm: `calc(100% - ${drawerWidth}px)` },
           ml: { sm: `${drawerWidth}px` },
-          bgcolor: 'background.paper',
-          color: 'text.primary',
-          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
         }}
       >
         <Toolbar>
@@ -138,9 +82,8 @@ export default function Layout({ children }: LayoutProps) {
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" noWrap sx={{ flexGrow: 1 }}>
-            {menuItems.find(item => item.path === location.pathname)?.text || 'TG Tools'}
+            TG Tools
           </Typography>
-          <Chip label="v2.0" color="primary" size="small" />
         </Toolbar>
       </AppBar>
       <Box component="nav" sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}>
@@ -174,7 +117,6 @@ export default function Layout({ children }: LayoutProps) {
           p: 3,
           width: { sm: `calc(100% - ${drawerWidth}px)` },
           minHeight: '100vh',
-          bgcolor: 'background.default',
         }}
       >
         <Toolbar />
