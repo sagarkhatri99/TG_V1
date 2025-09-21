@@ -32,6 +32,7 @@ import {
   PlayArrow as PlayIcon,
   Pause as PauseIcon,
   Science as TestIcon,
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import api, { endpoints } from '../api/Index';
@@ -181,6 +182,26 @@ export default function Accounts() {
     }
   };
 
+  const handleDeleteAccount = async (account: TelegramAccount) => {
+    if (!confirm(`Are you sure you want to delete the account "${account.nickname}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await api.delete(endpoints.accounts.delete(account.id));
+      setAlert({ 
+        type: 'success', 
+        message: `Account "${account.nickname}" deleted successfully` 
+      });
+      fetchAccounts();
+    } catch (error: any) {
+      setAlert({ 
+        type: 'error', 
+        message: error.response?.data?.detail || 'Failed to delete account' 
+      });
+    }
+  };
+
 
   const getStatusColor = (status: string): any => {
     switch (status) {
@@ -310,6 +331,15 @@ export default function Accounts() {
                             disabled={account.status === 'pending_verification'}
                           >
                             {account.status === 'active' ? <PauseIcon /> : <PlayIcon />}
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete Account">
+                          <IconButton 
+                            size="small" 
+                            onClick={() => handleDeleteAccount(account)}
+                            color="error"
+                          >
+                            <DeleteIcon />
                           </IconButton>
                         </Tooltip>
                       </Box>

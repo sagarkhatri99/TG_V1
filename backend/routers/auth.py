@@ -34,8 +34,17 @@ def register_user(user: UserCreate, db: Session = Depends(get_db)):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered",
         )
+    
+    # Check if this is the first user and make them admin
+    total_users = db.query(models.User).count()
+    subscription_plan = "admin" if total_users == 0 else "free"
+    
     hashed_password = security.get_password_hash(user.password)
-    db_user = models.User(email=user.email, password_hash=hashed_password)
+    db_user = models.User(
+        email=user.email, 
+        password_hash=hashed_password,
+        subscription_plan=subscription_plan
+    )
     db.add(db_user)
     db.commit()
     db.refresh(db_user)

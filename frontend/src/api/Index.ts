@@ -34,6 +34,7 @@ export const endpoints = {
     test: (id: number) => `/api/accounts/${id}/test`,
     pause: (id: number) => `/api/accounts/${id}/pause`,
     resume: (id: number) => `/api/accounts/${id}/resume`,
+    delete: (id: number) => `/api/accounts/${id}`,
     stats: (id: number) => `/api/accounts/${id}/stats`,
   },
   
