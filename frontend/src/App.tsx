@@ -17,7 +17,7 @@ import Settings from './pages/Settings';
 import Help from './pages/Help';
 import Jobs from './pages/Jobs';
 import Proxies from './pages/Proxies';
-import Layout from './components/layout/Layout';
+import AdminDashboard from './pages/AdminDashboard';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -34,16 +34,17 @@ const AppRoutes = () => {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route element={<ProtectedRoute />}>
-        <Route path="/" element={<Layout><Dashboard /></Layout>} />
-        <Route path="/jobs" element={<Layout><Jobs /></Layout>} />
-        <Route path="/accounts" element={<Layout><Accounts /></Layout>} />
-        <Route path="/scrape" element={<Layout><ScrapeUsers /></Layout>} />
-        <Route path="/monitor" element={<Layout><MonitorGroups /></Layout>} />
-        <Route path="/mass-dm" element={<Layout><MassDM /></Layout>} />
-        <Route path="/auto-promo" element={<Layout><AutoPromo /></Layout>} />
-        <Route path="/settings" element={<Layout><Settings /></Layout>} />
-        <Route path="/help" element={<Layout><Help /></Layout>} />
-        <Route path="/proxies" element={<Layout><Proxies /></Layout>} />
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/jobs" element={<Jobs />} />
+        <Route path="/accounts" element={<Accounts />} />
+        <Route path="/scrape" element={<ScrapeUsers />} />
+        <Route path="/monitor" element={<MonitorGroups />} />
+        <Route path="/mass-dm" element={<MassDM />} />
+        <Route path="/auto-promo" element={<AutoPromo />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="/help" element={<Help />} />
+        <Route path="/proxies" element={<Proxies />} />
+        <Route path="/admin" element={<AdminDashboard />} />
       </Route>
     </Routes>
   );

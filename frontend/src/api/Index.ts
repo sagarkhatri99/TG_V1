@@ -61,4 +61,18 @@ export const endpoints = {
     startAuth: '/api/auto_promo/start-auth',
     start: '/api/auto_promo/start',
   },
+  
+  admin: {
+    users: '/api/admin/users',
+    stats: '/api/admin/stats',
+    updateUser: (id: number) => `/api/admin/users/${id}`,
+    deleteUser: (id: number) => `/api/admin/users/${id}`,
+  },
+  
+  jobs: {
+    list: '/api/jobs/list',
+    create: '/api/jobs/create',
+    cancel: (id: number) => `/api/jobs/${id}/cancel`,
+    download: (id: number) => `/api/jobs/${id}/download`,
+  },
 };

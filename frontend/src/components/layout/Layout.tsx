@@ -1,6 +1,20 @@
 import React, { useState, useMemo } from 'react';
-import { Box, CssBaseline, Drawer, AppBar, Toolbar, List, Typography, Divider, IconButton, ListItem, ListItemButton, ListItemText, Button } from '@mui/material';
-import { Menu as MenuIcon, Dashboard as DashboardIcon, Logout as LogoutIcon } from '@mui/icons-material';
+import { Box, CssBaseline, Drawer, AppBar, Toolbar, List, Typography, Divider, IconButton, ListItem, ListItemButton, ListItemText, Button, ListItemIcon, Chip } from '@mui/material';
+import { 
+  Menu as MenuIcon, 
+  Dashboard as DashboardIcon, 
+  Logout as LogoutIcon,
+  AccountCircle as AccountsIcon,
+  Work as JobsIcon,
+  PersonSearch as ScrapeIcon,
+  Group as MonitorIcon,
+  Message as MassDMIcon,
+  Campaign as AutoPromoIcon,
+  Settings as SettingsIcon,
+  Help as HelpIcon,
+  Dns as ProxiesIcon,
+  AdminPanelSettings as AdminIcon
+} from '@mui/icons-material';
 import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
@@ -11,7 +25,17 @@ interface LayoutProps {
 }
 
 const allMenuItems = [
-  { text: 'Dashboard', icon: <DashboardIcon />, path: '/', plan: 'free' },
+  { text: 'Dashboard', icon: <DashboardIcon />, path: '/', plans: ['free', 'pro', 'enterprise'], isNew: false },
+  { text: 'Accounts', icon: <AccountsIcon />, path: '/accounts', plans: ['free', 'pro', 'enterprise'], isNew: false },
+  { text: 'Jobs', icon: <JobsIcon />, path: '/jobs', plans: ['free', 'pro', 'enterprise'], isNew: false },
+  { text: 'Scrape Users', icon: <ScrapeIcon />, path: '/scrape', plans: ['pro', 'enterprise'], isNew: false },
+  { text: 'Monitor Groups', icon: <MonitorIcon />, path: '/monitor', plans: ['pro', 'enterprise'], isNew: false },
+  { text: 'Mass DM', icon: <MassDMIcon />, path: '/mass-dm', plans: ['pro', 'enterprise'], isNew: false },
+  { text: 'Auto Promo', icon: <AutoPromoIcon />, path: '/auto-promo', plans: ['enterprise'], isNew: true },
+  { text: 'Proxies', icon: <ProxiesIcon />, path: '/proxies', plans: ['pro', 'enterprise'], isNew: false },
+  { text: 'Settings', icon: <SettingsIcon />, path: '/settings', plans: ['free', 'pro', 'enterprise'], isNew: false },
+  { text: 'Help', icon: <HelpIcon />, path: '/help', plans: ['free', 'pro', 'enterprise'], isNew: false },
+  { text: 'Admin Panel', icon: <AdminIcon />, path: '/admin', plans: ['admin'], isNew: false },
 ];
 
 export default function Layout({ children }: LayoutProps) {
@@ -26,7 +50,8 @@ export default function Layout({ children }: LayoutProps) {
 
   const menuItems = useMemo(() => {
     if (!user) return [];
-    return allMenuItems;
+    const userPlan = user.subscription_plan || 'free';
+    return allMenuItems.filter(item => item.plans.includes(userPlan));
   }, [user]);
 
   const handleDrawerToggle = () => {
@@ -47,8 +72,31 @@ export default function Layout({ children }: LayoutProps) {
             <ListItemButton
               selected={location.pathname === item.path}
               onClick={() => navigate(item.path)}
+              sx={{
+                borderRadius: 1,
+                mx: 1,
+                mb: 0.5,
+                '&.Mui-selected': {
+                  backgroundColor: 'primary.main',
+                  color: 'white',
+                  '&:hover': {
+                    backgroundColor: 'primary.dark',
+                  },
+                },
+              }}
             >
+              <ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}>
+                {item.icon}
+              </ListItemIcon>
               <ListItemText primary={item.text} />
+              {item.isNew && (
+                <Chip 
+                  label="NEW" 
+                  size="small" 
+                  color="success" 
+                  sx={{ height: 20, fontSize: '0.6rem' }}
+                />
+              )}
             </ListItemButton>
           </ListItem>
         ))}
@@ -84,6 +132,20 @@ export default function Layout({ children }: LayoutProps) {
           <Typography variant="h6" noWrap sx={{ flexGrow: 1 }}>
             TG Tools
           </Typography>
+          {user && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Chip 
+                label={user.subscription_plan.toUpperCase()} 
+                color={user.subscription_plan === 'free' ? 'default' : user.subscription_plan === 'pro' ? 'primary' : 'secondary'}
+                size="small"
+                variant="outlined"
+                sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.3)' }}
+              />
+              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)' }}>
+                {user.email}
+              </Typography>
+            </Box>
+          )}
         </Toolbar>
       </AppBar>
       <Box component="nav" sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}>

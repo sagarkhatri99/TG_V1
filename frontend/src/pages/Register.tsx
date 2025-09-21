@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Container, TextField, Button, Typography, Box, Grid, Link } from '@mui/material';
+import { Container, TextField, Button, Typography, Box, Link } from '@mui/material';
 
 const RegisterPage: React.FC = () => {
     const [email, setEmail] = useState('');
@@ -92,13 +92,11 @@ const RegisterPage: React.FC = () => {
                     >
                         Register
                     </Button>
-                    <Grid container spacing={2} justifyContent="flex-end">
-                        <Grid item xs={12}>
-                            <Link href="/login" variant="body2">
-                                Already have an account? Sign in
-                            </Link>
-                        </Grid>
-                    </Grid>
+                    <Box sx={{ textAlign: 'center', mt: 2 }}>
+                        <Link href="/login" variant="body2">
+                            Already have an account? Sign in
+                        </Link>
+                    </Box>
                 </Box>
             </Box>
         </Container>

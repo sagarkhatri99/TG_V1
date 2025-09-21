@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Container, TextField, Button, Typography, Box, Grid, Link } from '@mui/material';
+import { Container, TextField, Button, Typography, Box, Link } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
@@ -94,13 +94,11 @@ const LoginPage: React.FC = () => {
                     >
                         Sign In
                     </Button>
-                    <Grid container spacing={2} justifyContent="center">
-                        <Grid item xs={12}>
-                            <Link href="/register" variant="body2">
-                                {"Don't have an account? Sign Up"}
-                            </Link>
-                        </Grid>
-                    </Grid>
+                    <Box sx={{ textAlign: 'center', mt: 2 }}>
+                        <Link href="/register" variant="body2">
+                            {"Don't have an account? Sign Up"}
+                        </Link>
+                    </Box>
                 </Box>
             </Box>
         </Container>
