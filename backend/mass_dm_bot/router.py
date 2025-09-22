@@ -3,12 +3,14 @@ from sqlalchemy.orm import Session
 from models import Job, User
 from database import get_db
 from routers.auth import get_current_user
+from core.dependencies import plan_based_dependency
 import json
 from pydantic import BaseModel
 from typing import Optional
 import shutil
 import os
 from .tasks import mass_dm_bot_task
+from datetime import datetime, timedelta
 
 router = APIRouter()
 
@@ -19,10 +21,15 @@ async def create_mass_dm_bot_job(
     stop_after_hours: Optional[int] = Form(None),
     csv_file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(plan_based_dependency("mass_dm"))
 ):
-    if current_user.subscription_plan == 'free':
-        raise HTTPException(status_code=403, detail="Mass DM with a bot is not available on the free plan.")
+    if current_user.subscription_plan == 'pro':
+        if current_user.job_counter_last_reset < datetime.utcnow() - timedelta(days=30):
+            current_user.jobs_created_this_month = 0
+            current_user.job_counter_last_reset = datetime.utcnow()
+            db.commit()
+        if current_user.jobs_created_this_month >= 500:
+            raise HTTPException(status_code=403, detail="You have reached your monthly job limit of 500.")
 
     # Step 1: Create job to get an ID
     initial_job_config = {

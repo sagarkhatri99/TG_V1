@@ -3,12 +3,14 @@ from sqlalchemy.orm import Session
 from models import Job, TelegramAccount, User
 from database import get_db
 from routers.auth import get_current_user
+from core.dependencies import plan_based_dependency
 import json
 from pydantic import BaseModel
 from typing import Optional
 import shutil
 import os
 from .tasks import mass_dm_account_task
+from datetime import datetime, timedelta
 
 router = APIRouter()
 
@@ -27,10 +29,15 @@ async def create_mass_dm_account_job(
     csv_file: UploadFile = File(...),
     image_file: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(plan_based_dependency("mass_dm"))
 ):
-    if current_user.subscription_plan == 'free':
-        raise HTTPException(status_code=403, detail="Mass DM is not available on the free plan.")
+    if current_user.subscription_plan == 'pro':
+        if current_user.job_counter_last_reset < datetime.utcnow() - timedelta(days=30):
+            current_user.jobs_created_this_month = 0
+            current_user.job_counter_last_reset = datetime.utcnow()
+            db.commit()
+        if current_user.jobs_created_this_month >= 500:
+            raise HTTPException(status_code=403, detail="You have reached your monthly job limit of 500.")
 
     account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id, TelegramAccount.user_id == current_user.id).first()
     if not account:

@@ -3,11 +3,13 @@ from sqlalchemy.orm import Session
 from models import Job, TelegramAccount, User
 from database import get_db
 from routers.auth import get_current_user
+from core.dependencies import plan_based_dependency
 import json
 from typing import Optional
 import os
 import shutil
 from .tasks import auto_promo_task
+from datetime import datetime, timedelta
 
 router = APIRouter()
 
@@ -24,10 +26,15 @@ async def create_auto_promo_job(
     rate_limit_per_hour: Optional[int] = Form(None),
     image_file: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(plan_based_dependency("auto_promo"))
 ):
-    if current_user.subscription_plan != 'premium':
-        raise HTTPException(status_code=403, detail="Auto Promo is a premium feature.")
+    if current_user.subscription_plan == 'pro':
+        if current_user.job_counter_last_reset < datetime.utcnow() - timedelta(days=30):
+            current_user.jobs_created_this_month = 0
+            current_user.job_counter_last_reset = datetime.utcnow()
+            db.commit()
+        if current_user.jobs_created_this_month >= 500:
+            raise HTTPException(status_code=403, detail="You have reached your monthly job limit of 500.")
 
     account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id, TelegramAccount.user_id == current_user.id).first()
     if not account:
@@ -75,6 +82,10 @@ async def create_auto_promo_job(
             raise HTTPException(status_code=500, detail=f"Failed to save image file: {e}")
 
     auto_promo_task.delay(new_job.id)
+
+    if current_user.subscription_plan == 'pro':
+        current_user.jobs_created_this_month += 1
+        db.commit()
 
     return {"job_id": new_job.id, "message": "Auto promo job created successfully."}
 

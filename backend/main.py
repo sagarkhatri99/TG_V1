@@ -14,6 +14,7 @@ from auto_promo.router import router as auto_promo_router
 from routers.auth import router as auth_router
 from routers.proxies import router as proxies_router
 from routers.admin import router as admin_router
+from routers.subscriptions import router as subscriptions_router
 
 from models import TelegramAccount, MessageLog, UserInteraction
 
@@ -109,6 +110,7 @@ app.include_router(auto_promo_router, prefix="/api/auto_promo", tags=["Auto Prom
 app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(proxies_router, prefix="/api/proxies", tags=["Proxies"])
 app.include_router(admin_router, prefix="/api/admin", tags=["Admin"])
+app.include_router(subscriptions_router, prefix="/api/subscriptions", tags=["Subscriptions"])
 
 if __name__ == "__main__":
     import uvicorn

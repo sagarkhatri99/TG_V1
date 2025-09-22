@@ -7,6 +7,7 @@ from database import get_db
 import models
 from routers.auth import get_current_user
 from pydantic import BaseModel
+from core.dependencies import plan_based_dependency
 
 router = APIRouter()
 
@@ -32,18 +33,9 @@ class UserResponse(BaseModel):
     class Config:
         orm_mode = True
 
-def get_admin_user(current_user: models.User = Depends(get_current_user)):
-    """Ensure current user has admin privileges"""
-    if current_user.subscription_plan != 'admin':
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin privileges required"
-        )
-    return current_user
-
 @router.get("/stats", response_model=AdminStats)
 def get_admin_stats(
-    current_admin: models.User = Depends(get_admin_user),
+    current_admin: models.User = Depends(plan_based_dependency("admin_panel")),
     db: Session = Depends(get_db)
 ):
     """Get admin statistics"""
@@ -75,7 +67,7 @@ def get_admin_stats(
 
 @router.get("/users")
 def get_all_users(
-    current_admin: models.User = Depends(get_admin_user),
+    current_admin: models.User = Depends(plan_based_dependency("admin_panel")),
     db: Session = Depends(get_db)
 ):
     """Get all users with their counts"""
@@ -107,7 +99,7 @@ def get_all_users(
 def update_user(
     user_id: int,
     user_update: UserUpdate,
-    current_admin: models.User = Depends(get_admin_user),
+    current_admin: models.User = Depends(plan_based_dependency("admin_panel")),
     db: Session = Depends(get_db)
 ):
     """Update user subscription plan"""
@@ -129,7 +121,7 @@ def update_user(
 @router.delete("/users/{user_id}")
 def delete_user(
     user_id: int,
-    current_admin: models.User = Depends(get_admin_user),
+    current_admin: models.User = Depends(plan_based_dependency("admin_panel")),
     db: Session = Depends(get_db)
 ):
     """Delete a user and all associated data"""
@@ -154,7 +146,7 @@ def delete_user(
 @router.post("/users")
 def create_user(
     user_data: UserUpdate,
-    current_admin: models.User = Depends(get_admin_user),
+    current_admin: models.User = Depends(plan_based_dependency("admin_panel")),
     db: Session = Depends(get_db)
 ):
     """Create a new user"""

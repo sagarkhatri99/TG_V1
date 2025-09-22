@@ -10,6 +10,10 @@ class User(Base):
     email = Column(String(255), unique=True, index=True)
     password_hash = Column(String(255))
     subscription_plan = Column(String(50), default="free")
+    billing_cycle = Column(String(10), nullable=True)  # 'monthly' or 'annual'
+    trial_end_date = Column(DateTime, nullable=True)
+    jobs_created_this_month = Column(Integer, default=0)
+    job_counter_last_reset = Column(DateTime, default=datetime.utcnow)
     created_at = Column(DateTime, default=datetime.utcnow)
     
     telegram_accounts = relationship("TelegramAccount", back_populates="user")

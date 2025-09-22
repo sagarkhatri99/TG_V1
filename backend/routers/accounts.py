@@ -9,6 +9,7 @@ from database import get_db
 from models import TelegramAccount, Job, User
 from core.session_manager import session_manager
 from routers.auth import get_current_user
+from core.dependencies import plan_based_dependency
 from core.ban_prevention import ban_prevention
 from datetime import datetime
 import random
@@ -35,13 +36,18 @@ async def create_account(
     nickname: str = Form(...),
     proxy_id: Optional[int] = Form(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(plan_based_dependency("accounts"))
 ):
     # Subscription plan limits
-    account_limit = 1 if current_user.subscription_plan == 'free' else 10
-    user_accounts_count = db.query(TelegramAccount).filter(TelegramAccount.user_id == current_user.id).count()
-    if user_accounts_count >= account_limit:
-        raise HTTPException(status_code=403, detail=f"Account limit of {account_limit} reached for your plan.")
+    if current_user.subscription_plan != 'enterprise':
+        ACCOUNT_LIMITS = {
+            "free": 1,
+            "pro": 5,
+        }
+        account_limit = ACCOUNT_LIMITS.get(current_user.subscription_plan, 0)
+        user_accounts_count = db.query(TelegramAccount).filter(TelegramAccount.user_id == current_user.id).count()
+        if user_accounts_count >= account_limit:
+            raise HTTPException(status_code=403, detail=f"Account limit of {account_limit} reached for your plan.")
 
     existing = db.query(TelegramAccount).filter(TelegramAccount.phone_number == phone_number).first()
     if existing:
@@ -68,7 +74,7 @@ class AccountUpdate(BaseModel):
     nickname: Optional[str] = None
 
 @router.patch("/{account_id}", response_model=AccountUpdate)
-async def update_account(account_id: int, account_update: AccountUpdate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def update_account(account_id: int, account_update: AccountUpdate, db: Session = Depends(get_db), current_user: User = Depends(plan_based_dependency("accounts"))):
     account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id, TelegramAccount.user_id == current_user.id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found or not owned by user")
@@ -83,7 +89,7 @@ async def update_account(account_id: int, account_update: AccountUpdate, db: Ses
     return account
 
 @router.post("/{account_id}/send-code")
-async def send_verification_code(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def send_verification_code(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(plan_based_dependency("accounts"))):
     account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id, TelegramAccount.user_id == current_user.id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found or not owned by user")
@@ -101,7 +107,7 @@ async def send_verification_code(account_id: int, db: Session = Depends(get_db),
         raise HTTPException(status_code=400, detail=f"Failed to send code: {str(e)}")
 
 @router.post("/{account_id}/verify")
-async def verify_account(account_id: int, otp_code: str = Form(...), password: Optional[str] = Form(None), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def verify_account(account_id: int, otp_code: str = Form(...), password: Optional[str] = Form(None), db: Session = Depends(get_db), current_user: User = Depends(plan_based_dependency("accounts"))):
     account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id, TelegramAccount.user_id == current_user.id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found or not owned by user")
@@ -128,7 +134,7 @@ async def verify_account(account_id: int, otp_code: str = Form(...), password: O
 
 
 @router.get("/list")
-async def list_accounts(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def list_accounts(db: Session = Depends(get_db), current_user: User = Depends(plan_based_dependency("accounts"))):
     accounts = db.query(TelegramAccount).filter(TelegramAccount.user_id == current_user.id).all()
     account_data = []
     for account in accounts:
@@ -150,7 +156,7 @@ async def list_accounts(db: Session = Depends(get_db), current_user: User = Depe
     return {"accounts": account_data}
 
 @router.post("/{account_id}/test")
-async def test_account_connection(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def test_account_connection(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(plan_based_dependency("accounts"))):
     account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id, TelegramAccount.user_id == current_user.id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found or not owned by user")
@@ -176,7 +182,7 @@ async def test_account_connection(account_id: int, db: Session = Depends(get_db)
         await session_manager.disconnect_client(account_id)
 
 @router.post("/{account_id}/pause")
-async def pause_account(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def pause_account(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(plan_based_dependency("accounts"))):
     account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id, TelegramAccount.user_id == current_user.id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found or not owned by user")
@@ -195,7 +201,7 @@ async def pause_account(account_id: int, db: Session = Depends(get_db), current_
     return {"status": "paused", "jobs_affected": len(running_jobs)}
 
 @router.post("/{account_id}/resume")
-async def resume_account(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def resume_account(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(plan_based_dependency("accounts"))):
     account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id, TelegramAccount.user_id == current_user.id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found or not owned by user")
@@ -205,7 +211,7 @@ async def resume_account(account_id: int, db: Session = Depends(get_db), current
     return {"status": "resumed"}
 
 @router.delete("/{account_id}")
-async def delete_account(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def delete_account(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(plan_based_dependency("accounts"))):
     account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id, TelegramAccount.user_id == current_user.id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found or not owned by user")

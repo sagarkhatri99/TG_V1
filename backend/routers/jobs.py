@@ -4,6 +4,7 @@ from typing import List, Optional
 from models import Job, TelegramAccount, User
 from database import get_db
 from routers.auth import get_current_user
+from core.dependencies import plan_based_dependency
 import json
 from datetime import datetime
 
@@ -14,7 +15,7 @@ async def list_jobs(
     account_id: Optional[int] = None,
     status: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(plan_based_dependency("jobs_basic"))
 ):
     """List jobs with optional filters"""
     
@@ -53,7 +54,7 @@ async def list_jobs(
 async def get_job(
     job_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(plan_based_dependency("jobs_basic"))
 ):
     """Get job details"""
     
@@ -85,7 +86,7 @@ async def get_job(
 async def pause_job(
     job_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(plan_based_dependency("jobs_basic"))
 ):
     """Pause a job"""
     
@@ -105,7 +106,7 @@ async def pause_job(
 async def resume_job(
     job_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(plan_based_dependency("jobs_basic"))
 ):
     """Resume a paused job"""
     
@@ -125,7 +126,7 @@ async def resume_job(
 async def delete_job(
     job_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(plan_based_dependency("jobs_basic"))
 ):
     """Delete a job"""
     

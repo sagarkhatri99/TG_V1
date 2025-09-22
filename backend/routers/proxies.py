@@ -6,6 +6,7 @@ from typing import List
 from database import get_db
 from models import Proxy, User
 from routers.auth import get_current_user
+from core.dependencies import plan_based_dependency
 
 router = APIRouter()
 
@@ -25,7 +26,7 @@ class ProxyOut(BaseModel):
         orm_mode = True
 
 @router.post("/create", response_model=ProxyOut)
-async def create_proxy(proxy: ProxyCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def create_proxy(proxy: ProxyCreate, db: Session = Depends(get_db), current_user: User = Depends(plan_based_dependency("proxies"))):
     # In a real multi-tenant system, proxies might be owned by users.
     # For now, we'll treat them as global.
     db_proxy = Proxy(**proxy.dict())
@@ -35,12 +36,12 @@ async def create_proxy(proxy: ProxyCreate, db: Session = Depends(get_db), curren
     return db_proxy
 
 @router.get("/list", response_model=List[ProxyOut])
-async def list_proxies(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def list_proxies(db: Session = Depends(get_db), current_user: User = Depends(plan_based_dependency("proxies"))):
     proxies = db.query(Proxy).all()
     return proxies
 
 @router.delete("/{proxy_id}")
-async def delete_proxy(proxy_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def delete_proxy(proxy_id: int, db: Session = Depends(get_db), current_user: User = Depends(plan_based_dependency("proxies"))):
     proxy = db.query(Proxy).filter(Proxy.id == proxy_id).first()
     if not proxy:
         raise HTTPException(status_code=404, detail="Proxy not found")
