@@ -17,6 +17,7 @@ import {
   Alert,
 } from '@mui/material';
 import { PlayArrow, Pause, Delete, Refresh, Download } from '@mui/icons-material';
+import type { AxiosResponse } from 'axios';
 import api from '../api/Index';
 
 interface Job {
@@ -76,6 +77,34 @@ export default function Jobs() {
       fetchJobs();
     } catch (error) {
       setAlert({ type: 'error', message: 'Failed to delete job.' });
+    }
+  };
+
+  const handleDownload = async (jobId: number) => {
+    try {
+      const response: AxiosResponse<Blob> = await api.get('/api/group-monitor/download', {
+        params: { job_id: jobId },
+        responseType: 'blob',
+      });
+
+      const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+
+      // Try to infer filename from header
+      const dispo = (response.headers['content-disposition'] || '') as string;
+      const match = dispo.match(/filename="?([^";]+)"?/i);
+      const filename = match ? match[1] : `monitored_messages_job_${jobId}.csv`;
+
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error: any) {
+      const message = error?.response?.data?.detail || 'Failed to download results.';
+      setAlert({ type: 'error', message });
     }
   };
 
@@ -154,7 +183,7 @@ export default function Jobs() {
                         </IconButton>
                         {job.job_type === 'group_monitor' && job.status === 'completed' && (
                           <IconButton
-                            onClick={() => window.open(`/api/group-monitor/download?job_id=${job.id}`, '_blank')}
+                            onClick={() => handleDownload(job.id)}
                             size="small"
                           >
                             <Download />

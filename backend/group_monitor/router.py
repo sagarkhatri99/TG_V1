@@ -19,6 +19,7 @@ class GroupMonitorRequest(BaseModel):
     keywords: List[str]
     monitored_users: List[str]
     limit: int = 100
+    days: Optional[int] = None  # Number of days back to include (e.g., 1 or 7)
 
 @router.post("/create-job")
 async def create_group_monitor_job(request: GroupMonitorRequest, db: Session = Depends(get_db), current_user: User = Depends(plan_based_dependency("monitor"))):
@@ -33,12 +34,15 @@ async def create_group_monitor_job(request: GroupMonitorRequest, db: Session = D
     account = db.query(TelegramAccount).filter(TelegramAccount.id == request.account_id, TelegramAccount.user_id == current_user.id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found or not owned by user")
+    if account.status != 'active':
+        raise HTTPException(status_code=400, detail="Selected Telegram account is not verified/active.")
 
     job_config = {
         "group_usernames": request.group_usernames,
         "keywords": request.keywords,
         "monitored_users": request.monitored_users,
-        "limit": request.limit
+        "limit": request.limit,
+        "days": request.days if request.days in [1, 7] else None
     }
 
     new_job = Job(

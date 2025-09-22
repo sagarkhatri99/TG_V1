@@ -5,15 +5,21 @@ from routers.auth import get_current_user
 # Define feature access levels for each plan
 PLAN_FEATURES = {
     "free": ["dashboard", "accounts", "settings", "help", "jobs_basic"],
+    # Include both 'jobs' and 'jobs_basic' to satisfy endpoints that depend on either
     "pro": [
-        "dashboard", "accounts", "settings", "help", "jobs", "scrape", "monitor",
+        "dashboard", "accounts", "settings", "help", "jobs", "jobs_basic", "scrape", "monitor",
         "mass_dm", "proxies", "ban_prevention"
     ],
     "enterprise": [
-        "dashboard", "accounts", "settings", "help", "jobs", "scrape", "monitor",
+        "dashboard", "accounts", "settings", "help", "jobs", "jobs_basic", "scrape", "monitor",
         "mass_dm", "auto_promo", "proxies", "ban_prevention", "ai_scoring"
     ],
-    "admin": ["admin_panel"] # Admins have their own panel, separate from user features
+    # Admins should have access to all features, including the admin panel
+    "admin": [
+        "dashboard", "accounts", "settings", "help", "jobs", "jobs_basic", "scrape",
+        "monitor", "mass_dm", "auto_promo", "proxies", "ban_prevention", "ai_scoring",
+        "admin_panel"
+    ]
 }
 
 def plan_based_dependency(required_feature: str):
@@ -28,14 +34,7 @@ def plan_based_dependency(required_feature: str):
 
         # Admins have access to all features
         if user_plan == 'admin':
-            if required_feature == 'admin_panel':
-                return current_user
-            else:
-                # Admins should not access regular user features
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Admins can only access the admin panel through the designated admin endpoints."
-                )
+            return current_user
 
         # Check if the user's plan has the required feature
         allowed_features = PLAN_FEATURES.get(user_plan, [])
