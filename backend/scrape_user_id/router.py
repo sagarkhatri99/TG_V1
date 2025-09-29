@@ -1,7 +1,11 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from fastapi.responses import FileResponse
 from .service import start_scrape_auth, verify_and_scrape
+from database import get_db
+from models import User
+from routers.auth import get_current_user
+from core.dependencies import plan_based_dependency
 
 router = APIRouter()
 
@@ -18,7 +22,7 @@ class VerifyScrapeRequest(BaseModel):
     group_username: str
 
 @router.post("/start-auth")
-async def start_auth(request: StartAuthRequest):
+async def start_auth(request: StartAuthRequest, current_user: User = Depends(plan_based_dependency("scrape"))):
     try:
         await start_scrape_auth(request.api_id, request.api_hash, request.phone_number)
         return {"success": True, "message": "OTP sent to your phone"}
@@ -26,7 +30,7 @@ async def start_auth(request: StartAuthRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/verify-scrape")
-async def verify_scrape(request: VerifyScrapeRequest):
+async def verify_scrape(request: VerifyScrapeRequest, current_user: User = Depends(plan_based_dependency("scrape"))):
     try:
         count = await verify_and_scrape(
             request.api_id,
@@ -40,6 +44,6 @@ async def verify_scrape(request: VerifyScrapeRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/download")
-def download_csv(phone_number: str):
+def download_csv(phone_number: str, current_user: User = Depends(plan_based_dependency("scrape"))):
     filename = f"participants_{phone_number}.csv"
     return FileResponse(filename, media_type="text/csv", filename=filename)

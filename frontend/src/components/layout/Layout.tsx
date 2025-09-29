@@ -1,32 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { Box, CssBaseline, Drawer, AppBar, Toolbar, List, Typography, Divider, IconButton, ListItem, ListItemButton, ListItemText, Button, ListItemIcon, Chip } from '@mui/material';
 import {
-  Box,
-  CssBaseline,
-  Drawer,
-  AppBar,
-  Toolbar,
-  List,
-  Typography,
-  Divider,
-  IconButton,
-  ListItem,
-  ListItemButton,
-  ListItemIcon,
-  ListItemText,
-  Avatar,
-  Chip,
-} from '@mui/material';
-import {
-  Menu as MenuIcon,
-  Dashboard as DashboardIcon,
-  AccountCircle as AccountIcon,
-  Search as SearchIcon,
-  Visibility as MonitorIcon,
-  Send as SendIcon,
-  Campaign as PromoIcon,
-  Work as WorkIcon,
+  Menu as MenuIcon, 
+  Dashboard as DashboardIcon, 
+  Logout as LogoutIcon,
+  AccountCircle as AccountsIcon,
+  Work as JobsIcon,
+  PersonSearch as ScrapeIcon,
+  Group as MonitorIcon,
+  Message as MassDMIcon,
+  Campaign as AutoPromoIcon,
+  Settings as SettingsIcon,
+  Help as HelpIcon,
+  Dns as ProxiesIcon,
+  AdminPanelSettings as AdminIcon,
 } from '@mui/icons-material';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Navigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 
 const drawerWidth = 240;
 
@@ -34,62 +24,90 @@ interface LayoutProps {
   children: React.ReactNode;
 }
 
-const menuItems = [
-  { text: 'Dashboard', icon: <DashboardIcon />, path: '/' },
-  { text: 'Jobs', icon: <WorkIcon />, path: '/jobs' },
-  { text: 'Accounts', icon: <AccountIcon />, path: '/accounts' },
-  { text: 'Scrape Users', icon: <SearchIcon />, path: '/scrape' },
-  { text: 'Monitor Groups', icon: <MonitorIcon />, path: '/monitor' },
-  { text: 'Mass DM', icon: <SendIcon />, path: '/mass-dm' },
-  { text: 'Auto Promo', icon: <PromoIcon />, path: '/auto-promo' },
+const allMenuItems = [
+  { text: 'Dashboard', icon: <DashboardIcon />, path: '/', plans: ['free', 'pro', 'enterprise'], isNew: false },
+  { text: 'Accounts', icon: <AccountsIcon />, path: '/accounts', plans: ['free', 'pro', 'enterprise'], isNew: false },
+  { text: 'Jobs', icon: <JobsIcon />, path: '/jobs', plans: ['free', 'pro', 'enterprise'], isNew: false },
+  { text: 'Scrape Users', icon: <ScrapeIcon />, path: '/scrape', plans: ['pro', 'enterprise'], isNew: false },
+  { text: 'Monitor Groups', icon: <MonitorIcon />, path: '/monitor', plans: ['pro', 'enterprise'], isNew: false },
+  { text: 'Mass DM', icon: <MassDMIcon />, path: '/mass-dm', plans: ['pro', 'enterprise'], isNew: false },
+  { text: 'Auto Promo', icon: <AutoPromoIcon />, path: '/auto-promo', plans: ['enterprise'], isNew: true },
+  { text: 'Proxies', icon: <ProxiesIcon />, path: '/proxies', plans: ['pro', 'enterprise'], isNew: false },
+  { text: 'Settings', icon: <SettingsIcon />, path: '/settings', plans: ['free', 'pro', 'enterprise'], isNew: false },
+  { text: 'Help', icon: <HelpIcon />, path: '/help', plans: ['free', 'pro', 'enterprise'], isNew: false },
+  { text: 'Admin Panel', icon: <AdminIcon />, path: '/admin', plans: ['admin'], isNew: false },
 ];
 
 export default function Layout({ children }: LayoutProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, logout, isAuthenticated } = useAuth();
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  const menuItems = useMemo(() => {
+    if (!user) return [];
+    const userPlan = user.subscription_plan || 'free';
+    return allMenuItems.filter(item => item.plans.includes(userPlan));
+  }, [user]);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
   };
 
   const drawer = (
-    <div>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Toolbar>
-        <Box display="flex" alignItems="center" gap={2}>
-          <Avatar sx={{ bgcolor: 'primary.main' }}>T</Avatar>
-          <Typography variant="h6" noWrap component="div">
-            TG Tools
-          </Typography>
-        </Box>
+        <Typography variant="h6" noWrap component="div">
+          TG Tools
+        </Typography>
       </Toolbar>
       <Divider />
-      <List>
+      <List sx={{ flexGrow: 1 }}>
         {menuItems.map((item) => (
           <ListItem key={item.text} disablePadding>
             <ListItemButton
               selected={location.pathname === item.path}
               onClick={() => navigate(item.path)}
               sx={{
+                borderRadius: 1,
+                mx: 1,
+                mb: 0.5,
                 '&.Mui-selected': {
                   backgroundColor: 'primary.main',
                   color: 'white',
                   '&:hover': {
                     backgroundColor: 'primary.dark',
                   },
-                  '& .MuiListItemIcon-root': {
-                    color: 'white',
-                  },
                 },
               }}
             >
-              <ListItemIcon>{item.icon}</ListItemIcon>
+              <ListItemIcon sx={{ color: 'inherit', minWidth: 40 }}>
+                {item.icon}
+              </ListItemIcon>
               <ListItemText primary={item.text} />
+              {item.isNew && (
+                <Chip 
+                  label="NEW" 
+                  size="small" 
+                  color="success" 
+                  sx={{ height: 20, fontSize: '0.6rem' }}
+                />
+              )}
             </ListItemButton>
           </ListItem>
         ))}
       </List>
-    </div>
+      <Divider />
+      <Box sx={{ p: 2 }}>
+        <Button variant="contained" startIcon={<LogoutIcon />} onClick={logout} fullWidth>
+          Logout
+        </Button>
+      </Box>
+    </Box>
   );
 
   return (
@@ -100,9 +118,6 @@ export default function Layout({ children }: LayoutProps) {
         sx={{
           width: { sm: `calc(100% - ${drawerWidth}px)` },
           ml: { sm: `${drawerWidth}px` },
-          bgcolor: 'background.paper',
-          color: 'text.primary',
-          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
         }}
       >
         <Toolbar>
@@ -115,9 +130,22 @@ export default function Layout({ children }: LayoutProps) {
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" noWrap sx={{ flexGrow: 1 }}>
-            {menuItems.find(item => item.path === location.pathname)?.text || 'TG Tools'}
+            TG Tools
           </Typography>
-          <Chip label="v2.0" color="primary" size="small" />
+          {user && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <Chip 
+                label={user.subscription_plan.toUpperCase()} 
+                color={user.subscription_plan === 'free' ? 'default' : user.subscription_plan === 'pro' ? 'primary' : 'secondary'}
+                size="small"
+                variant="outlined"
+                sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.3)' }}
+              />
+              <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)' }}>
+                {user.email}
+              </Typography>
+            </Box>
+          )}
         </Toolbar>
       </AppBar>
       <Box component="nav" sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}>
@@ -151,7 +179,6 @@ export default function Layout({ children }: LayoutProps) {
           p: 3,
           width: { sm: `calc(100% - ${drawerWidth}px)` },
           minHeight: '100vh',
-          bgcolor: 'background.default',
         }}
       >
         <Toolbar />

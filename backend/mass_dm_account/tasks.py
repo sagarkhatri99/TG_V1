@@ -8,6 +8,7 @@ import logging
 import pandas as pd
 import random
 import time
+import os
 from datetime import datetime, timedelta
 import asyncio
 from telethon.errors import FloodWaitError, UserPrivacyRestrictedError, UserIsBotError, UserBlockedError, ChatWriteForbiddenError
@@ -29,6 +30,14 @@ async def _mass_dm_runner(job: Job, db: Session):
     message = config.get('message')
     stop_after_hours = config.get('stop_after_hours')
     csv_file_path = config.get('csv_file_path')
+    image_file_path = config.get('image_file_path')
+    rate_limit_per_hour = config.get('rate_limit_per_hour')
+    delay_seconds = config.get('delay_seconds')
+    min_delay_seconds = config.get('min_delay_seconds')
+    max_delay_seconds = config.get('max_delay_seconds')
+
+    if image_file_path and not os.path.exists(image_file_path):
+        raise FileNotFoundError(f"Image file not found at {image_file_path}")
 
     try:
         user_data = pd.read_csv(csv_file_path)
@@ -40,11 +49,16 @@ async def _mass_dm_runner(job: Job, db: Session):
             raise Exception("CSV must have a 'user_id' or 'username' column.")
     except FileNotFoundError:
         raise Exception(f"CSV file not found at path: {csv_file_path}")
+    
+    # Initialize job with total planned messages
+    job.messages_planned = len(ids)
+    db.commit()
 
     client = await session_manager.get_client(account)
     stop_time = datetime.utcnow() + timedelta(hours=stop_after_hours) if stop_after_hours else None
     sent_count = 0
     error_messages = []
+    message_timestamps = []
     
     async with client:
         for i, uid in enumerate(ids):
@@ -61,15 +75,37 @@ async def _mass_dm_runner(job: Job, db: Session):
                 job.status = 'completed'
                 break
 
+            # Rate limiting
+            if rate_limit_per_hour:
+                current_time = datetime.utcnow()
+                one_hour_ago = current_time - timedelta(hours=1)
+                message_timestamps = [t for t in message_timestamps if t > one_hour_ago]
+                if len(message_timestamps) >= rate_limit_per_hour:
+                    logger.info(f"Job {job.id} reached rate limit of {rate_limit_per_hour}/hour. Waiting...")
+                    await asyncio.sleep(60) # Wait a minute before checking again
+                    continue
+
             try:
-                await client.send_message(uid, message)
+                if image_file_path:
+                    await client.send_file(uid, image_file_path, caption=message)
+                else:
+                    await client.send_message(uid, message)
+                
                 sent_count += 1
-                job.progress = (sent_count / len(ids)) * 100
+                message_timestamps.append(datetime.utcnow())
+                job.messages_sent = sent_count
+                job.completion_percentage = (sent_count / len(ids)) * 100.0
+                job.progress = int(job.completion_percentage)  # Keep existing progress field for compatibility
                 
                 if (i + 1) % 5 == 0 or (i + 1) == len(ids):
                     db.commit()
 
-                sleep_time = random.randint(5, 300)
+                if isinstance(min_delay_seconds, int) and isinstance(max_delay_seconds, int) and max_delay_seconds >= min_delay_seconds and min_delay_seconds >= 0:
+                    sleep_time = random.randint(min_delay_seconds, max_delay_seconds)
+                elif isinstance(delay_seconds, int) and delay_seconds >= 0:
+                    sleep_time = delay_seconds
+                else:
+                    sleep_time = random.randint(5, 300)
                 logger.info(f"Job {job.id} sent message to {uid}, sleeping for {sleep_time} seconds.")
                 await asyncio.sleep(sleep_time)
 
@@ -78,7 +114,10 @@ async def _mass_dm_runner(job: Job, db: Session):
                 await asyncio.sleep(e.seconds)
                 # Retry sending after flood wait
                 try:
-                    await client.send_message(uid, message)
+                    if image_file_path:
+                        await client.send_file(uid, image_file_path, caption=message)
+                    else:
+                        await client.send_message(uid, message)
                 except Exception as retry_e:
                     error_messages.append(f"Failed to send to {uid} after flood wait: {retry_e.__class__.__name__}")
 
@@ -128,6 +167,10 @@ def mass_dm_account_task(self, job_id: int):
         job.error_message = str(e)
         db.commit()
     finally:
+        try:
+            account_id = job.telegram_account_id if 'job' in locals() and job else None
+        except Exception:
+            account_id = None
         if account_id:
             logger.info(f"Disconnecting client for account {account_id} from job {job_id}")
             asyncio.run(session_manager.disconnect_client(account_id))

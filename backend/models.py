@@ -10,9 +10,14 @@ class User(Base):
     email = Column(String(255), unique=True, index=True)
     password_hash = Column(String(255))
     subscription_plan = Column(String(50), default="free")
+    billing_cycle = Column(String(10), nullable=True)  # 'monthly' or 'annual'
+    trial_end_date = Column(DateTime, nullable=True)
+    jobs_created_this_month = Column(Integer, default=0)
+    job_counter_last_reset = Column(DateTime, default=datetime.utcnow)
     created_at = Column(DateTime, default=datetime.utcnow)
     
     telegram_accounts = relationship("TelegramAccount", back_populates="user")
+    jobs = relationship("Job", back_populates="user")
 
 class TelegramAccount(Base):
     __tablename__ = "telegram_accounts"
@@ -63,7 +68,9 @@ class Job(Base):
     __tablename__ = "jobs"
     
     id = Column(Integer, primary_key=True, index=True)
-    telegram_account_id = Column(Integer, ForeignKey("telegram_accounts.id"))
+    user_id = Column(Integer, ForeignKey("users.id"))
+    user = relationship("User", back_populates="jobs")
+    telegram_account_id = Column(Integer, ForeignKey("telegram_accounts.id"), nullable=True)
     job_type = Column(String(50))
     config = Column(Text)
     status = Column(String(20), default="pending")
@@ -73,6 +80,11 @@ class Job(Base):
     progress = Column(Integer, default=0)
     total_tasks = Column(Integer)
     error_message = Column(Text)
+    # New fields for enhanced job tracking
+    user_description = Column(Text, nullable=True)  # What user mentioned when creating the job
+    messages_sent = Column(Integer, default=0)  # Actual messages sent
+    messages_planned = Column(Integer, default=0)  # Total messages supposed to send
+    completion_percentage = Column(Float, default=0.0)  # Calculated percentage
 
 class MessageLog(Base):
     __tablename__ = "message_logs"
@@ -86,3 +98,6 @@ class MessageLog(Base):
     ai_relevance_score = Column(Float)
     delivery_status = Column(String(20))
     timestamp = Column(DateTime, default=datetime.utcnow)
+
+
+

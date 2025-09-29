@@ -9,6 +9,7 @@ import time
 import random
 import asyncio
 import json
+import os
 from datetime import datetime, timedelta
 import logging
 
@@ -26,9 +27,14 @@ async def _mass_dm_bot_runner(job: Job, db: Session):
     message = config.get('message')
     stop_after_hours = config.get('stop_after_hours')
     csv_file_path = config.get('csv_file_path')
+    delay_seconds = config.get('delay_seconds')
+    min_delay_seconds = config.get('min_delay_seconds')
+    max_delay_seconds = config.get('max_delay_seconds')
 
     if not bot_token:
         raise Exception("Bot token is missing from the job configuration.")
+
+    bot = Bot(token=bot_token)
 
     try:
         user_data = pd.read_csv(csv_file_path)
@@ -38,6 +44,10 @@ async def _mass_dm_bot_runner(job: Job, db: Session):
             raise Exception("CSV must have a 'chat_id' column for bot-based DMs.")
     except FileNotFoundError:
         raise Exception(f"CSV file not found at path: {csv_file_path}")
+    
+    # Initialize job with total planned messages
+    job.messages_planned = len(ids)
+    db.commit()
 
     stop_time = datetime.utcnow() + timedelta(hours=stop_after_hours) if stop_after_hours else None
     sent_count = 0
@@ -59,7 +69,31 @@ async def _mass_dm_bot_runner(job: Job, db: Session):
         try:
             await bot.send_message(chat_id=uid, text=message)
             sent_count += 1
-            job.progress = (sent_count / len(ids)) * 100
+            job.messages_sent = sent_count
+            job.completion_percentage = (sent_count / len(ids)) * 100.0
+            job.progress = int(job.completion_percentage)  # Keep existing progress field for compatibility
+
+            if (i + 1) % 5 == 0 or (i + 1) == len(ids):
+                db.commit()
+
+            if isinstance(min_delay_seconds, int) and isinstance(max_delay_seconds, int) and max_delay_seconds >= min_delay_seconds and min_delay_seconds >= 0:
+                sleep_time = random.randint(min_delay_seconds, max_delay_seconds)
+            elif isinstance(delay_seconds, int) and delay_seconds >= 0:
+                sleep_time = delay_seconds
+            else:
+                sleep_time = random.randint(5, 300)
+            logger.info(f"Job {job.id} sent message to {uid}, sleeping for {sleep_time} seconds.")
+            await asyncio.sleep(sleep_time)
+
+        except (BadRequest, Forbidden) as e:
+            logger.warning(f"Could not send message to {uid} for job {job.id}: {e.message}")
+            error_messages.append(f"Could not send to {uid}: {e.message}")
+        except TelegramError as e:
+            logger.error(f"A Telegram error occurred for job {job.id} sending to {uid}: {e.message}")
+            error_messages.append(f"Telegram error for {uid}: {e.message}")
+        except Exception as e:
+            logger.error(f"An unexpected error occurred for job {job.id} sending to {uid}: {e}")
+            error_messages.append(f"Unexpected error for {uid}: {e.__class__.__name__}")
 
     if error_messages:
         raise MassDMBotError(f"Job completed with {len(error_messages)} errors.", error_messages)

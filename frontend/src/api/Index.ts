@@ -7,11 +7,27 @@ const api = axios.create({
   },
 });
 
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
 export default api;
 
 export const endpoints = {
   health: '/health',
   stats: '/stats',
+  me: {
+    stats: '/api/me/stats',
+  },
   
   accounts: {
     list: '/api/accounts/list',
@@ -21,6 +37,7 @@ export const endpoints = {
     test: (id: number) => `/api/accounts/${id}/test`,
     pause: (id: number) => `/api/accounts/${id}/pause`,
     resume: (id: number) => `/api/accounts/${id}/resume`,
+    delete: (id: number) => `/api/accounts/${id}`,
     stats: (id: number) => `/api/accounts/${id}/stats`,
   },
   
@@ -47,5 +64,21 @@ export const endpoints = {
   autoPromo: {
     startAuth: '/api/auto_promo/start-auth',
     start: '/api/auto_promo/start',
+  },
+  
+  admin: {
+    users: '/api/admin/users',
+    stats: '/api/admin/stats',
+    updateUser: (id: number) => `/api/admin/users/${id}`,
+    deleteUser: (id: number) => `/api/admin/users/${id}`,
+  },
+  
+  jobs: {
+    list: '/api/jobs/list',
+    create: '/api/jobs/create',
+    cancel: (id: number) => `/api/jobs/${id}/cancel`,
+    restart: (id: number) => `/api/jobs/${id}/restart`,
+    delete: (id: number) => `/api/jobs/${id}`,
+    download: (id: number) => `/api/jobs/${id}/download`,
   },
 };

@@ -22,38 +22,60 @@ import {
   Alert,
   CircularProgress,
   Tooltip,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from '@mui/material';
 import {
   Add as AddIcon,
   PlayArrow as PlayIcon,
   Pause as PauseIcon,
   Science as TestIcon,
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import api, { endpoints } from '../api/Index';
 import type { TelegramAccount, CreateAccountRequest } from '../Types/Index';
 
+interface Proxy {
+  id: number;
+  proxy_url: string;
+}
 
 export default function Accounts() {
   const [accounts, setAccounts] = useState<TelegramAccount[]>([]);
+  const [proxies, setProxies] = useState<Proxy[]>([]);
   const [loading, setLoading] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [verifyDialogOpen, setVerifyDialogOpen] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState<TelegramAccount | null>(null);
   const [alert, setAlert] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+  const [loadingActions, setLoadingActions] = useState<{ [key: number]: string }>({});
   
-  const [createForm, setCreateForm] = useState<CreateAccountRequest>({
+  const [createForm, setCreateForm] = useState<CreateAccountRequest & { proxy_id?: number | '' }>({
     api_id: 0,
     api_hash: '',
     phone_number: '',
     nickname: '',
+    proxy_id: '',
   });
   const [otpCode, setOtpCode] = useState('');
 
 
   useEffect(() => {
     fetchAccounts();
+    fetchProxies();
   }, []);
+
+  const fetchProxies = async () => {
+    try {
+      const response = await api.get('/api/proxies/list');
+      setProxies(response.data);
+    } catch (error) {
+      console.error('Failed to fetch proxies', error);
+    }
+  };
 
 
   const fetchAccounts = async () => {
@@ -132,32 +154,91 @@ export default function Accounts() {
 
 
   const handlePauseResume = async (account: TelegramAccount) => {
+    const actionType = account.status === 'active' ? 'pause' : 'resume';
+    setLoadingActions(prev => ({ ...prev, [account.id]: actionType }));
+    
     try {
       const endpoint = account.status === 'active' 
         ? endpoints.accounts.pause(account.id)
         : endpoints.accounts.resume(account.id);
       
-      await api.post(endpoint);
-      setAlert({ 
-        type: 'success', 
-        message: `Account ${account.status === 'active' ? 'paused' : 'resumed'} successfully` 
-      });
+      const response = await api.post(endpoint);
+      
+      if (actionType === 'resume') {
+        // Handle resume with connection test results
+        const data = response.data;
+        if (data.connection_test === 'passed') {
+          setAlert({ 
+            type: 'success', 
+            message: `Account resumed successfully. Connection test passed. User: ${data.user_info?.first_name || 'Unknown'}` 
+          });
+        } else {
+          setAlert({ 
+            type: 'error', 
+            message: 'Account resume failed: Connection test failed' 
+          });
+        }
+      } else {
+        setAlert({ 
+          type: 'success', 
+          message: `Account paused successfully` 
+        });
+      }
+      
       fetchAccounts();
-    } catch (error) {
-      setAlert({ type: 'error', message: 'Operation failed' });
+    } catch (error: any) {
+      const message = error?.response?.data?.detail || 'Operation failed';
+      setAlert({ type: 'error', message });
+    } finally {
+      setLoadingActions(prev => {
+        const newState = { ...prev };
+        delete newState[account.id];
+        return newState;
+      });
     }
   };
 
 
   const handleTestConnection = async (account: TelegramAccount) => {
+    setLoadingActions(prev => ({ ...prev, [account.id]: 'test' }));
+    
     try {
       const response = await api.post(endpoints.accounts.test(account.id));
       setAlert({ 
         type: 'success', 
-        message: `Connection test successful. User: ${response.data.first_name}` 
+        message: `Connection test successful. User: ${response.data.first_name || response.data.username || 'Unknown'}` 
       });
-    } catch (error) {
-      setAlert({ type: 'error', message: 'Connection test failed' });
+      fetchAccounts();
+    } catch (error: any) {
+      const message = error?.response?.data?.detail || 'Connection test failed';
+      setAlert({ type: 'error', message });
+      fetchAccounts(); // Refresh to show updated status if account status changed
+    } finally {
+      setLoadingActions(prev => {
+        const newState = { ...prev };
+        delete newState[account.id];
+        return newState;
+      });
+    }
+  };
+
+  const handleDeleteAccount = async (account: TelegramAccount) => {
+    if (!confirm(`Are you sure you want to delete the account "${account.nickname}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await api.delete(endpoints.accounts.delete(account.id));
+      setAlert({ 
+        type: 'success', 
+        message: `Account "${account.nickname}" deleted successfully` 
+      });
+      fetchAccounts();
+    } catch (error: any) {
+      setAlert({ 
+        type: 'error', 
+        message: error.response?.data?.detail || 'Failed to delete account' 
+      });
     }
   };
 
@@ -223,6 +304,7 @@ export default function Accounts() {
                   <TableCell>Account</TableCell>
                   <TableCell>Phone</TableCell>
                   <TableCell>Status</TableCell>
+                  <TableCell>Proxy</TableCell>
                   <TableCell>Trust Score</TableCell>
                   <TableCell>Risk Score</TableCell>
                   <TableCell>Messages Today</TableCell>
@@ -247,6 +329,7 @@ export default function Accounts() {
                         size="small"
                       />
                     </TableCell>
+                    <TableCell>{account.proxy?.proxy_url || 'None'}</TableCell>
                     <TableCell>
                       <Chip 
                         label={account.trust_score}
@@ -276,18 +359,31 @@ export default function Accounts() {
                           <IconButton 
                             size="small" 
                             onClick={() => handleTestConnection(account)}
-                            disabled={account.status !== 'active'}
+                            disabled={account.status !== 'active' || loadingActions[account.id] === 'test'}
                           >
-                            <TestIcon />
+                            {loadingActions[account.id] === 'test' ? <CircularProgress size={16} /> : <TestIcon />}
                           </IconButton>
                         </Tooltip>
                         <Tooltip title={account.status === 'active' ? 'Pause' : 'Resume'}>
                           <IconButton 
                             size="small" 
                             onClick={() => handlePauseResume(account)}
-                            disabled={account.status === 'pending_verification'}
+                            disabled={account.status === 'pending_verification' || loadingActions[account.id] === 'pause' || loadingActions[account.id] === 'resume'}
                           >
-                            {account.status === 'active' ? <PauseIcon /> : <PlayIcon />}
+                            {(loadingActions[account.id] === 'pause' || loadingActions[account.id] === 'resume') ? 
+                              <CircularProgress size={16} /> : 
+                              (account.status === 'active' ? <PauseIcon /> : <PlayIcon />)
+                            }
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete Account">
+                          <IconButton 
+                            size="small" 
+                            onClick={() => handleDeleteAccount(account)}
+                            color="error"
+                            disabled={!!loadingActions[account.id]}
+                          >
+                            <DeleteIcon />
                           </IconButton>
                         </Tooltip>
                       </Box>
@@ -343,6 +439,24 @@ export default function Accounts() {
                   onChange={(e) => setCreateForm({ ...createForm, nickname: e.target.value })}
                 />
               </Box>
+              <FormControl fullWidth>
+                <InputLabel id="proxy-select-label">Proxy (Optional)</InputLabel>
+                <Select
+                  labelId="proxy-select-label"
+                  value={createForm.proxy_id}
+                  label="Proxy (Optional)"
+                  onChange={(e) => setCreateForm({ ...createForm, proxy_id: e.target.value as number | '' })}
+                >
+                  <MenuItem value="">
+                    <em>None</em>
+                  </MenuItem>
+                  {proxies.map((proxy) => (
+                    <MenuItem key={proxy.id} value={proxy.id}>
+                      {proxy.proxy_url}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Box>
           </Box>
         </DialogContent>

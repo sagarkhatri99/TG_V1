@@ -29,6 +29,7 @@ export default function MonitorGroups() {
     keywords: [] as string[],
     monitored_users: [] as string[],
     limit: '100',
+    days: '7', // default to 7 days
   });
 
   const [currentGroup, setCurrentGroup] = useState('');
@@ -85,6 +86,7 @@ export default function MonitorGroups() {
         keywords: formData.keywords,
         monitored_users: formData.monitored_users,
         limit: parseInt(formData.limit),
+        days: parseInt(formData.days),
       });
       setAlert({ type: 'success', message: response.data.message || 'Job created successfully!' });
       // Optionally reset form
@@ -213,6 +215,22 @@ export default function MonitorGroups() {
                 onChange={(e) => setFormData({ ...formData, limit: e.target.value })}
                 sx={{ mb: 3 }}
               />
+
+              <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                <Button
+                  variant={formData.days === '1' ? 'contained' : 'outlined'}
+                  onClick={() => setFormData({ ...formData, days: '1' })}
+                >
+                  Past 1 day
+                </Button>
+                <Button
+                  variant={formData.days === '7' ? 'contained' : 'outlined'}
+                  onClick={() => setFormData({ ...formData, days: '7' })}
+                >
+                  Past 7 days
+                </Button>
+              </Box>
+
               <Button
                 variant="contained"
                 startIcon={<SendIcon />}

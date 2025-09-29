@@ -1,13 +1,16 @@
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form
 from sqlalchemy.orm import Session
-from models import Job
+from models import Job, User
 from database import get_db
+from routers.auth import get_current_user
+from core.dependencies import plan_based_dependency
 import json
 from pydantic import BaseModel
 from typing import Optional
 import shutil
 import os
 from .tasks import mass_dm_bot_task
+from datetime import datetime, timedelta
 
 router = APIRouter()
 
@@ -15,10 +18,23 @@ router = APIRouter()
 async def create_mass_dm_bot_job(
     bot_token: str = Form(...),
     message: str = Form(...),
+    user_description: Optional[str] = Form(None),
     stop_after_hours: Optional[int] = Form(None),
+    delay_seconds: Optional[int] = Form(None),
+    min_delay_seconds: Optional[int] = Form(None),
+    max_delay_seconds: Optional[int] = Form(None),
     csv_file: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(plan_based_dependency("mass_dm"))
 ):
+    if current_user.subscription_plan == 'pro':
+        if current_user.job_counter_last_reset < datetime.utcnow() - timedelta(days=30):
+            current_user.jobs_created_this_month = 0
+            current_user.job_counter_last_reset = datetime.utcnow()
+            db.commit()
+        if current_user.jobs_created_this_month >= 500:
+            raise HTTPException(status_code=403, detail="You have reached your monthly job limit of 500.")
+
     # Step 1: Create job to get an ID
     initial_job_config = {
         "bot_token": bot_token,
@@ -26,10 +42,12 @@ async def create_mass_dm_bot_job(
         "stop_after_hours": stop_after_hours,
     }
     new_job = Job(
+        user_id=current_user.id,
         telegram_account_id=None,
         job_type='mass_dm_bot',
         config=json.dumps(initial_job_config),
-        status='pending'
+        status='pending',
+        user_description=user_description
     )
     db.add(new_job)
     db.commit()
@@ -55,6 +73,9 @@ async def create_mass_dm_bot_job(
         "message": message,
         "stop_after_hours": stop_after_hours,
         "csv_file_path": file_path,
+        "delay_seconds": delay_seconds,
+        "min_delay_seconds": min_delay_seconds,
+        "max_delay_seconds": max_delay_seconds,
     }
     new_job.config = json.dumps(final_job_config)
     db.commit()

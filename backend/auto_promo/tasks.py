@@ -9,6 +9,7 @@ import random
 import time
 from datetime import datetime, timedelta
 import asyncio
+import os
 from telethon.errors import FloodWaitError, ChatWriteForbiddenError
 
 logger = logging.getLogger(__name__)
@@ -21,14 +22,33 @@ async def _auto_promo_runner(job: Job, db: Session):
     config = json.loads(job.config)
     target_group = config.get('target_group')
     promo_message = config.get('promo_message')
+    image_file_path = config.get('image_file_path')
+    rate_limit_per_hour = config.get('rate_limit_per_hour')
     interval_seconds = config.get('interval_seconds', 3600)
     use_random_interval = config.get('use_random_interval', False)
     min_interval = config.get('min_interval')
     max_interval = config.get('max_interval')
     stop_after_hours = config.get('stop_after_hours')
 
+    if image_file_path and not os.path.exists(image_file_path):
+        raise FileNotFoundError(f"Image file not found at {image_file_path}")
+
     client = await session_manager.get_client(account)
     stop_time = datetime.utcnow() + timedelta(hours=stop_after_hours) if stop_after_hours else None
+    message_timestamps = []
+    
+    # For auto promo, we track messages as they are sent over time
+    # Initialize with estimated planned messages based on rate and duration
+    if stop_after_hours and rate_limit_per_hour:
+        estimated_messages = stop_after_hours * rate_limit_per_hour
+    elif stop_after_hours:
+        estimated_messages = stop_after_hours  # Assume 1 message per hour by default
+    else:
+        estimated_messages = 24  # Default to 24 if no limit specified
+    
+    job.messages_planned = estimated_messages
+    job.messages_sent = 0
+    db.commit()
 
     async with client:
         try:
@@ -49,12 +69,33 @@ async def _auto_promo_runner(job: Job, db: Session):
                 logger.info(f"Auto promo job {job.id} reached its time limit of {stop_after_hours} hours.")
                 job.status = 'completed'
                 break
+
+            # Rate limiting
+            if rate_limit_per_hour:
+                current_time = datetime.utcnow()
+                one_hour_ago = current_time - timedelta(hours=1)
+                message_timestamps = [t for t in message_timestamps if t > one_hour_ago]
+                if len(message_timestamps) >= rate_limit_per_hour:
+                    logger.info(f"Job {job.id} reached rate limit of {rate_limit_per_hour}/hour. Waiting...")
+                    await asyncio.sleep(60) # Wait a minute before checking again
+                    continue
             
             try:
-                await client.send_message(group, promo_message)
+                if image_file_path:
+                    await client.send_file(group, image_file_path, caption=promo_message)
+                else:
+                    await client.send_message(group, promo_message)
+
+                message_timestamps.append(datetime.utcnow())
                 logger.info(f"Sent promo message to {target_group} for job {job.id}")
                 
-                job.progress = (job.progress or 0) + 1
+                # Update message tracking
+                job.messages_sent = (job.messages_sent or 0) + 1
+                if job.messages_planned > 0:
+                    job.completion_percentage = (job.messages_sent / job.messages_planned) * 100.0
+                else:
+                    job.completion_percentage = min((job.messages_sent / 10) * 100.0, 100.0)  # Fallback calculation
+                job.progress = int(job.completion_percentage)  # Keep existing progress field for compatibility
                 db.commit()
 
 
