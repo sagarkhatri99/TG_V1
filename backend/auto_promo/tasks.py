@@ -36,6 +36,19 @@ async def _auto_promo_runner(job: Job, db: Session):
     client = await session_manager.get_client(account)
     stop_time = datetime.utcnow() + timedelta(hours=stop_after_hours) if stop_after_hours else None
     message_timestamps = []
+    
+    # For auto promo, we track messages as they are sent over time
+    # Initialize with estimated planned messages based on rate and duration
+    if stop_after_hours and rate_limit_per_hour:
+        estimated_messages = stop_after_hours * rate_limit_per_hour
+    elif stop_after_hours:
+        estimated_messages = stop_after_hours  # Assume 1 message per hour by default
+    else:
+        estimated_messages = 24  # Default to 24 if no limit specified
+    
+    job.messages_planned = estimated_messages
+    job.messages_sent = 0
+    db.commit()
 
     async with client:
         try:
@@ -76,7 +89,13 @@ async def _auto_promo_runner(job: Job, db: Session):
                 message_timestamps.append(datetime.utcnow())
                 logger.info(f"Sent promo message to {target_group} for job {job.id}")
                 
-                job.progress = (job.progress or 0) + 1
+                # Update message tracking
+                job.messages_sent = (job.messages_sent or 0) + 1
+                if job.messages_planned > 0:
+                    job.completion_percentage = (job.messages_sent / job.messages_planned) * 100.0
+                else:
+                    job.completion_percentage = min((job.messages_sent / 10) * 100.0, 100.0)  # Fallback calculation
+                job.progress = int(job.completion_percentage)  # Keep existing progress field for compatibility
                 db.commit()
 
 

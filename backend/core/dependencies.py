@@ -8,7 +8,7 @@ PLAN_FEATURES = {
     # Include both 'jobs' and 'jobs_basic' to satisfy endpoints that depend on either
     "pro": [
         "dashboard", "accounts", "settings", "help", "jobs", "jobs_basic", "scrape", "monitor",
-        "mass_dm", "proxies", "ban_prevention"
+        "mass_dm", "auto_promo", "proxies", "ban_prevention"
     ],
     "enterprise": [
         "dashboard", "accounts", "settings", "help", "jobs", "jobs_basic", "scrape", "monitor",

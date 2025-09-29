@@ -121,12 +121,45 @@ async def verify_account(account_id: int, otp_code: str = Form(...), password: O
         else:
             await client.sign_in(phone=account.phone_number, code=otp_code)
         
-        # On success, update the account and disconnect the client from the cache
-        account.status = 'active'
-        account.last_activity = datetime.utcnow()
-        db.commit()
-        await session_manager.disconnect_client(account_id)
-        return {"status": "verified", "account_id": account.id}
+        # On success, perform connection test to verify account is working
+        try:
+            # Test connection immediately after verification
+            me = await client.get_me()
+            if me:
+                account.status = 'active'
+                account.last_activity = datetime.utcnow()
+                db.commit()
+                await session_manager.disconnect_client(account_id)
+                return {
+                    "status": "verified", 
+                    "account_id": account.id,
+                    "connection_test": "passed",
+                    "user_info": {
+                        "user_id": me.id,
+                        "username": me.username,
+                        "first_name": me.first_name
+                    }
+                }
+            else:
+                account.status = 'error'
+                db.commit()
+                await session_manager.disconnect_client(account_id)
+                return {
+                    "status": "verified_but_connection_failed", 
+                    "account_id": account.id,
+                    "message": "Account verified but connection test failed"
+                }
+        except Exception as test_error:
+            # If connection test fails, still mark as verified but with error status
+            account.status = 'error'
+            account.last_activity = datetime.utcnow()
+            db.commit()
+            await session_manager.disconnect_client(account_id)
+            return {
+                "status": "verified_but_connection_failed", 
+                "account_id": account.id,
+                "message": f"Account verified but connection test failed: {str(test_error)}"
+            }
     except Exception as e:
         # If verification fails, disconnect to ensure a fresh start next time
         await session_manager.disconnect_client(account_id)
@@ -201,14 +234,41 @@ async def pause_account(account_id: int, db: Session = Depends(get_db), current_
     return {"status": "paused", "jobs_affected": len(running_jobs)}
 
 @router.post("/{account_id}/resume")
-async def resume_account(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(plan_based_dependency("accounts"))):
+async def resume_account(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id, TelegramAccount.user_id == current_user.id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found or not owned by user")
 
-    account.status = 'active'
-    db.commit()
-    return {"status": "resumed"}
+    # Test connection before resuming
+    try:
+        client = await session_manager.get_client(account)
+        async with client:
+            me = await client.get_me()
+        
+        if me:
+            account.status = 'active'
+            account.last_activity = datetime.utcnow()
+            db.commit()
+            return {
+                "status": "resumed", 
+                "connection_test": "passed",
+                "user_info": {
+                    "user_id": me.id, 
+                    "username": me.username, 
+                    "first_name": me.first_name
+                }
+            }
+        else:
+            account.status = 'error'
+            db.commit()
+            raise HTTPException(status_code=400, detail="Connection test failed: Could not get user info")
+    except Exception as e:
+        account.status = 'error'
+        db.commit()
+        raise HTTPException(status_code=400, detail=f"Connection test failed: {str(e)}")
+    finally:
+        # Always disconnect after test
+        await session_manager.disconnect_client(account_id)
 
 @router.delete("/{account_id}")
 async def delete_account(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(plan_based_dependency("accounts"))):

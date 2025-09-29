@@ -11,10 +11,11 @@ from group_monitor.router import router as monitor_router
 from mass_dm_bot.router import router as dm_bot_router
 from mass_dm_account.router import router as dm_account_router
 from auto_promo.router import router as auto_promo_router
-from routers.auth import router as auth_router
+from routers.auth import router as auth_router, get_current_user
 from routers.proxies import router as proxies_router
 from routers.admin import router as admin_router
 from routers.subscriptions import router as subscriptions_router
+from core.session_manager import session_manager
 
 from models import TelegramAccount, MessageLog, UserInteraction
 
@@ -51,8 +52,8 @@ def health_check():
 @app.get("/stats")
 def system_stats(db: Session = Depends(get_db)):
     active_accounts = db.query(TelegramAccount).filter(TelegramAccount.status == 'active').count()
-    # For active sessions, adjust based on your session manager if accessible
-    active_sessions = 0
+    # System-wide sessions (total open clients)
+    active_sessions = len(session_manager.active_clients)
     db.close()
     return {
         "active_sessions": active_sessions,
@@ -65,6 +66,16 @@ def system_stats(db: Session = Depends(get_db)):
             "ai_integration": "available"
         }
     }
+
+@app.get("/api/me/stats")
+def my_stats(current_user = Depends(get_current_user), db: Session = Depends(get_db)):
+    # per-user active accounts
+    active_accounts = db.query(TelegramAccount).filter(TelegramAccount.user_id == current_user.id, TelegramAccount.status == 'active').count()
+    # per-user active sessions (intersection of client's active account ids)
+    user_account_ids = set([row.id for row in db.query(TelegramAccount.id).filter(TelegramAccount.user_id == current_user.id).all()])
+    active_sessions = sum(1 for acc_id in session_manager.active_clients.keys() if acc_id in user_account_ids)
+    db.close()
+    return {"active_accounts": active_accounts, "active_sessions": active_sessions}
 
 @app.get("/api/accounts/{account_id}/stats")
 def account_stats(account_id: int, db: Session = Depends(get_db)):

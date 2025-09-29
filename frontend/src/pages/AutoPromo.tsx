@@ -29,6 +29,7 @@ export default function AutoPromo() {
     account_id: '',
     target_group: '',
     promo_message: '',
+    user_description: '',
     interval_seconds: '3600',
     use_random_interval: false,
     min_interval: '60',
@@ -63,6 +64,9 @@ export default function AutoPromo() {
     apiFormData.append('account_id', formData.account_id);
     apiFormData.append('target_group', formData.target_group);
     apiFormData.append('promo_message', formData.promo_message);
+    if (formData.user_description) {
+      apiFormData.append('user_description', formData.user_description);
+    }
     apiFormData.append('use_random_interval', String(formData.use_random_interval));
     if (formData.use_random_interval) {
         apiFormData.append('min_interval', formData.min_interval);
@@ -148,6 +152,14 @@ export default function AutoPromo() {
                 placeholder="Your promotional message here..."
                 value={formData.promo_message}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, promo_message: e.target.value })}
+                sx={{ mb: 2 }}
+              />
+              <TextField
+                fullWidth
+                label="Campaign Description (Optional)"
+                placeholder="Describe what this auto promo campaign is for..."
+                value={formData.user_description}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, user_description: e.target.value })}
                 sx={{ mb: 2 }}
               />
               <Button

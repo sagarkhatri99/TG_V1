@@ -23,9 +23,12 @@ class MassDMAccountRequest(BaseModel):
 async def create_mass_dm_account_job(
     account_id: int = Form(...),
     message: str = Form(...),
+    user_description: Optional[str] = Form(None),
     stop_after_hours: Optional[int] = Form(None),
     rate_limit_per_hour: Optional[int] = Form(None),
     delay_seconds: Optional[int] = Form(None),
+    min_delay_seconds: Optional[int] = Form(None),
+    max_delay_seconds: Optional[int] = Form(None),
     csv_file: UploadFile = File(...),
     image_file: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
@@ -48,6 +51,8 @@ async def create_mass_dm_account_job(
         "stop_after_hours": stop_after_hours,
         "rate_limit_per_hour": rate_limit_per_hour,
         "delay_seconds": delay_seconds,
+        "min_delay_seconds": min_delay_seconds,
+        "max_delay_seconds": max_delay_seconds,
     }
 
     new_job = Job(
@@ -55,7 +60,8 @@ async def create_mass_dm_account_job(
         telegram_account_id=account_id,
         job_type='mass_dm_account',
         config=json.dumps(job_config),
-        status='pending'
+        status='pending',
+        user_description=user_description
     )
     db.add(new_job)
     db.commit()

@@ -25,6 +25,9 @@ export default api;
 export const endpoints = {
   health: '/health',
   stats: '/stats',
+  me: {
+    stats: '/api/me/stats',
+  },
   
   accounts: {
     list: '/api/accounts/list',
@@ -74,6 +77,8 @@ export const endpoints = {
     list: '/api/jobs/list',
     create: '/api/jobs/create',
     cancel: (id: number) => `/api/jobs/${id}/cancel`,
+    restart: (id: number) => `/api/jobs/${id}/restart`,
+    delete: (id: number) => `/api/jobs/${id}`,
     download: (id: number) => `/api/jobs/${id}/download`,
   },
 };

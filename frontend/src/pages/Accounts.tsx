@@ -51,6 +51,7 @@ export default function Accounts() {
   const [verifyDialogOpen, setVerifyDialogOpen] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState<TelegramAccount | null>(null);
   const [alert, setAlert] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+  const [loadingActions, setLoadingActions] = useState<{ [key: number]: string }>({});
   
   const [createForm, setCreateForm] = useState<CreateAccountRequest & { proxy_id?: number | '' }>({
     api_id: 0,
@@ -153,32 +154,71 @@ export default function Accounts() {
 
 
   const handlePauseResume = async (account: TelegramAccount) => {
+    const actionType = account.status === 'active' ? 'pause' : 'resume';
+    setLoadingActions(prev => ({ ...prev, [account.id]: actionType }));
+    
     try {
       const endpoint = account.status === 'active' 
         ? endpoints.accounts.pause(account.id)
         : endpoints.accounts.resume(account.id);
       
-      await api.post(endpoint);
-      setAlert({ 
-        type: 'success', 
-        message: `Account ${account.status === 'active' ? 'paused' : 'resumed'} successfully` 
-      });
+      const response = await api.post(endpoint);
+      
+      if (actionType === 'resume') {
+        // Handle resume with connection test results
+        const data = response.data;
+        if (data.connection_test === 'passed') {
+          setAlert({ 
+            type: 'success', 
+            message: `Account resumed successfully. Connection test passed. User: ${data.user_info?.first_name || 'Unknown'}` 
+          });
+        } else {
+          setAlert({ 
+            type: 'error', 
+            message: 'Account resume failed: Connection test failed' 
+          });
+        }
+      } else {
+        setAlert({ 
+          type: 'success', 
+          message: `Account paused successfully` 
+        });
+      }
+      
       fetchAccounts();
-    } catch (error) {
-      setAlert({ type: 'error', message: 'Operation failed' });
+    } catch (error: any) {
+      const message = error?.response?.data?.detail || 'Operation failed';
+      setAlert({ type: 'error', message });
+    } finally {
+      setLoadingActions(prev => {
+        const newState = { ...prev };
+        delete newState[account.id];
+        return newState;
+      });
     }
   };
 
 
   const handleTestConnection = async (account: TelegramAccount) => {
+    setLoadingActions(prev => ({ ...prev, [account.id]: 'test' }));
+    
     try {
       const response = await api.post(endpoints.accounts.test(account.id));
       setAlert({ 
         type: 'success', 
-        message: `Connection test successful. User: ${response.data.first_name}` 
+        message: `Connection test successful. User: ${response.data.first_name || response.data.username || 'Unknown'}` 
       });
-    } catch (error) {
-      setAlert({ type: 'error', message: 'Connection test failed' });
+      fetchAccounts();
+    } catch (error: any) {
+      const message = error?.response?.data?.detail || 'Connection test failed';
+      setAlert({ type: 'error', message });
+      fetchAccounts(); // Refresh to show updated status if account status changed
+    } finally {
+      setLoadingActions(prev => {
+        const newState = { ...prev };
+        delete newState[account.id];
+        return newState;
+      });
     }
   };
 
@@ -319,18 +359,21 @@ export default function Accounts() {
                           <IconButton 
                             size="small" 
                             onClick={() => handleTestConnection(account)}
-                            disabled={account.status !== 'active'}
+                            disabled={account.status !== 'active' || loadingActions[account.id] === 'test'}
                           >
-                            <TestIcon />
+                            {loadingActions[account.id] === 'test' ? <CircularProgress size={16} /> : <TestIcon />}
                           </IconButton>
                         </Tooltip>
                         <Tooltip title={account.status === 'active' ? 'Pause' : 'Resume'}>
                           <IconButton 
                             size="small" 
                             onClick={() => handlePauseResume(account)}
-                            disabled={account.status === 'pending_verification'}
+                            disabled={account.status === 'pending_verification' || loadingActions[account.id] === 'pause' || loadingActions[account.id] === 'resume'}
                           >
-                            {account.status === 'active' ? <PauseIcon /> : <PlayIcon />}
+                            {(loadingActions[account.id] === 'pause' || loadingActions[account.id] === 'resume') ? 
+                              <CircularProgress size={16} /> : 
+                              (account.status === 'active' ? <PauseIcon /> : <PlayIcon />)
+                            }
                           </IconButton>
                         </Tooltip>
                         <Tooltip title="Delete Account">
@@ -338,6 +381,7 @@ export default function Accounts() {
                             size="small" 
                             onClick={() => handleDeleteAccount(account)}
                             color="error"
+                            disabled={!!loadingActions[account.id]}
                           >
                             <DeleteIcon />
                           </IconButton>

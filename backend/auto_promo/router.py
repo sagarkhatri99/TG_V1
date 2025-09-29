@@ -18,6 +18,7 @@ async def create_auto_promo_job(
     account_id: int = Form(...),
     target_group: str = Form(...),
     promo_message: str = Form(...),
+    user_description: Optional[str] = Form(None),
     interval_seconds: Optional[int] = Form(None),
     use_random_interval: bool = Form(False),
     min_interval: Optional[int] = Form(None),
@@ -59,7 +60,8 @@ async def create_auto_promo_job(
         telegram_account_id=account_id,
         job_type='auto_promo',
         config=json.dumps(job_config),
-        status='pending'
+        status='pending',
+        user_description=user_description
     )
     db.add(new_job)
     db.commit()

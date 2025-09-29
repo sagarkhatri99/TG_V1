@@ -18,7 +18,11 @@ router = APIRouter()
 async def create_mass_dm_bot_job(
     bot_token: str = Form(...),
     message: str = Form(...),
+    user_description: Optional[str] = Form(None),
     stop_after_hours: Optional[int] = Form(None),
+    delay_seconds: Optional[int] = Form(None),
+    min_delay_seconds: Optional[int] = Form(None),
+    max_delay_seconds: Optional[int] = Form(None),
     csv_file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(plan_based_dependency("mass_dm"))
@@ -42,7 +46,8 @@ async def create_mass_dm_bot_job(
         telegram_account_id=None,
         job_type='mass_dm_bot',
         config=json.dumps(initial_job_config),
-        status='pending'
+        status='pending',
+        user_description=user_description
     )
     db.add(new_job)
     db.commit()
@@ -68,6 +73,9 @@ async def create_mass_dm_bot_job(
         "message": message,
         "stop_after_hours": stop_after_hours,
         "csv_file_path": file_path,
+        "delay_seconds": delay_seconds,
+        "min_delay_seconds": min_delay_seconds,
+        "max_delay_seconds": max_delay_seconds,
     }
     new_job.config = json.dumps(final_job_config)
     db.commit()

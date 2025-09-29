@@ -10,6 +10,7 @@ from typing import List, Optional
 from fastapi.responses import StreamingResponse
 from .tasks import group_monitor_task
 from datetime import datetime, timedelta
+import os
 
 router = APIRouter()
 
@@ -114,10 +115,11 @@ def download_csv(job_id: int, db: Session = Depends(get_db), current_user: User 
     if not job:
         raise HTTPException(status_code=404, detail="Job not found or not owned by user")
 
-    if job.status != 'completed':
-        raise HTTPException(status_code=400, detail="Job is not complete.")
-
     filename = f"/app/job_results/monitored_messages_job_{job_id}.csv"
+
+    # Allow downloading partial results if the file exists, regardless of job status
+    if not os.path.exists(filename):
+        raise HTTPException(status_code=404, detail="Result file not found.")
 
     def file_iterator(file_path, chunk_size=8192):
         try:
@@ -131,10 +133,11 @@ def download_csv(job_id: int, db: Session = Depends(get_db), current_user: User 
             raise
 
     try:
+        from os.path import basename
         return StreamingResponse(
             file_iterator(filename),
             media_type="text/csv",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
+            headers={"Content-Disposition": f"attachment; filename={basename(filename)}"}
         )
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Result file not found.")

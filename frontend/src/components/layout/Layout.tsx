@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Box, CssBaseline, Drawer, AppBar, Toolbar, List, Typography, Divider, IconButton, ListItem, ListItemButton, ListItemText, Button, ListItemIcon, Chip } from '@mui/material';
-import { 
+import {
   Menu as MenuIcon, 
   Dashboard as DashboardIcon, 
   Logout as LogoutIcon,
@@ -13,7 +13,7 @@ import {
   Settings as SettingsIcon,
   Help as HelpIcon,
   Dns as ProxiesIcon,
-  AdminPanelSettings as AdminIcon
+  AdminPanelSettings as AdminIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';

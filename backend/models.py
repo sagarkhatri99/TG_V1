@@ -80,6 +80,11 @@ class Job(Base):
     progress = Column(Integer, default=0)
     total_tasks = Column(Integer)
     error_message = Column(Text)
+    # New fields for enhanced job tracking
+    user_description = Column(Text, nullable=True)  # What user mentioned when creating the job
+    messages_sent = Column(Integer, default=0)  # Actual messages sent
+    messages_planned = Column(Integer, default=0)  # Total messages supposed to send
+    completion_percentage = Column(Float, default=0.0)  # Calculated percentage
 
 class MessageLog(Base):
     __tablename__ = "message_logs"
@@ -93,3 +98,6 @@ class MessageLog(Base):
     ai_relevance_score = Column(Float)
     delivery_status = Column(String(20))
     timestamp = Column(DateTime, default=datetime.utcnow)
+
+
+

@@ -1,0 +1,178 @@
+#!/usr/bin/env python3
+"""
+Docker initialization script to create test users and sample data
+"""
+
+import sys
+import os
+import time
+from sqlalchemy.orm import Session
+from passlib.context import CryptContext
+from datetime import datetime, timedelta
+
+# Add the backend directory to the Python path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from database import SessionLocal, engine
+from models import User, TelegramAccount, Base
+
+# Password hashing
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
+
+def wait_for_database():
+    """Wait for database to be ready"""
+    max_retries = 30
+    retry_delay = 2
+    
+    for attempt in range(max_retries):
+        try:
+            db = SessionLocal()
+            db.execute("SELECT 1")
+            db.close()
+            print("✅ Database connection successful")
+            return True
+        except Exception as e:
+            print(f"⏳ Database not ready (attempt {attempt + 1}/{max_retries}): {e}")
+            time.sleep(retry_delay)
+    
+    print("❌ Database connection failed after all retries")
+    return False
+
+def create_test_users():
+    """Create test users with different subscription plans"""
+    db: Session = SessionLocal()
+    
+    try:
+        # Test users data
+        test_users = [
+            {
+                "email": "free@test.com",
+                "password": "testpass123",
+                "subscription_plan": "free",
+                "description": "Free plan user - should be denied access to lead profiles"
+            },
+            {
+                "email": "pro@test.com", 
+                "password": "testpass123",
+                "subscription_plan": "pro",
+                "description": "Pro plan user - should be denied access to lead profiles"
+            },
+            {
+                "email": "enterprise@test.com",
+                "password": "testpass123", 
+                "subscription_plan": "enterprise",
+                "description": "Enterprise plan user - should have full access to lead profiles"
+            },
+            {
+                "email": "admin@test.com",
+                "password": "testpass123",
+                "subscription_plan": "admin", 
+                "description": "Admin user - should have full access to lead profiles"
+            }
+        ]
+        
+        created_users = []
+        
+        for user_data in test_users:
+            # Check if user already exists
+            existing_user = db.query(User).filter(User.email == user_data["email"]).first()
+            
+            if existing_user:
+                print(f"✅ User {user_data['email']} already exists with plan: {existing_user.subscription_plan}")
+                created_users.append(existing_user)
+                continue
+            
+            # Create new user
+            user = User(
+                email=user_data["email"],
+                password_hash=hash_password(user_data["password"]),
+                subscription_plan=user_data["subscription_plan"],
+                created_at=datetime.utcnow(),
+                jobs_created_this_month=0,
+                job_counter_last_reset=datetime.utcnow(),
+                billing_cycle=None,
+                trial_end_date=None
+            )
+            
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+            
+            created_users.append(user)
+            print(f"✅ Created user {user.email} with plan: {user.subscription_plan}")
+        
+        return created_users
+        
+    except Exception as e:
+        print(f"❌ Error creating test users: {e}")
+        db.rollback()
+        return []
+    
+    finally:
+        db.close()
+
+def create_sample_data():
+    """SDR sample data creation removed due to SDR extraction into a separate app."""
+    print("Skipping SDR sample data creation in main app.")
+                    user_id=enterprise_user.id,
+                    lead_profile_id=tech_profile.id,
+                    **lead_data,
+                    conversation_score=0.0,
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
+                )
+                
+                db.add(lead)
+                db.commit()
+                db.refresh(lead)
+                
+                print(f"✅ Created lead: {lead.first_name} {lead.last_name} (@{lead.telegram_username})")
+        
+        print(f"✅ Sample data creation completed!")
+        
+    except Exception as e:
+        print(f"❌ Error creating sample data: {e}")
+        db.rollback()
+    
+    finally:
+        db.close()
+
+def main():
+    """Main initialization function"""
+    print("🚀 Initializing TG Tools with SDR Lead Profiles data...")
+    print("=" * 60)
+    
+    # Wait for database to be ready
+    if not wait_for_database():
+        sys.exit(1)
+    
+    # Create test users
+    print("\\n📊 Creating test users...")
+    users = create_test_users()
+    
+    if users:
+        print("\\n📋 Creating sample data...")
+        create_sample_data()
+        
+        print("\\n" + "=" * 60)
+        print("✅ INITIALIZATION COMPLETED!")
+        print("\\n👥 Test Users Created:")
+        for user in users:
+            access = "✅ FULL ACCESS" if user.subscription_plan in ['enterprise', 'admin'] else "❌ NO ACCESS"
+            print(f"   📧 {user.email} (password: testpass123) - {user.subscription_plan.upper()} plan - {access}")
+        
+        print("\\n🎯 Access Summary:")
+        print("   • Lead Profiles feature: Enterprise/Admin ONLY")
+        print("   • No limits on profiles/leads for enterprise users")
+        print("   • Free/Pro users will receive 403 Forbidden")
+        print("\\n🌐 API Available at: http://localhost:8000")
+        print("📚 Documentation: http://localhost:8000/docs")
+    else:
+        print("❌ Failed to create test users")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

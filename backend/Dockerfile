@@ -15,6 +15,8 @@ RUN apt-get update \
        libpq-dev \
        curl \
        sed \
+       postgresql-client \
+       redis-tools \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the requirements file into the container

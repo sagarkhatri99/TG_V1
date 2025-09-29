@@ -1,28 +1,47 @@
 #!/bin/bash
 set -e
 
-# Wait for the DB to be ready by retrying alembic upgrade until it succeeds.
-# This handles "connection refused" during container startup when DB isn't ready yet.
-MAX_RETRIES=30
-RETRY_DELAY=2
-count=0
-echo "Waiting for database to be ready (up to $((MAX_RETRIES * RETRY_DELAY))s)..."
-until alembic upgrade head >/dev/null 2>&1; do
-  count=$((count + 1))
-  if [ "$count" -ge "$MAX_RETRIES" ]; then
-    echo "ERROR: Database not ready after $((MAX_RETRIES * RETRY_DELAY))s. Exiting."
-    # Show last backend + db logs for quick debugging
-    echo "----- last backend logs -----"
-    docker-compose logs --tail=50 backend || true
-    echo "----- last db logs -----"
-    docker-compose logs --tail=50 db || true
-    exit 1
-  fi
-  echo "Database not ready yet. Retrying in ${RETRY_DELAY}s... ($count/$MAX_RETRIES)"
-  sleep $RETRY_DELAY
+# Wait for database to be ready
+echo "Waiting for database connection..."
+while ! pg_isready -h db -p 5432 -U user; do
+    echo "Database not ready, waiting..."
+    sleep 2
 done
+echo "Database is ready!"
 
-echo "Database ready, migrations applied."
+# Wait for Redis to be ready  
+echo "Waiting for Redis connection..."
+while ! redis-cli -h redis ping > /dev/null 2>&1; do
+    echo "Redis not ready, waiting..."
+    sleep 2
+done
+echo "Redis is ready!"
 
-# Execute the command passed to the container (e.g. uvicorn)
+# Run database migrations
+echo "Running database migrations..."
+
+# First check if we need to merge heads
+if ! alembic upgrade head 2>/dev/null; then
+    echo "Migration failed, checking for multiple heads..."
+    HEADS_COUNT=$(alembic heads | wc -l)
+    if [ "$HEADS_COUNT" -gt 1 ]; then
+        echo "Multiple heads detected, running merge script..."
+        python merge_migrations.py
+        echo "Attempting migration again after merge..."
+        alembic upgrade head
+    else
+        echo "Single head detected but migration failed. Exiting."
+        exit 1
+    fi
+fi
+
+echo "Database migrations completed!"
+
+# Initialize sample data (optional, non-blocking)
+if [ -f "init_docker_data.py" ]; then
+    echo "Initializing sample data..."
+    python init_docker_data.py || echo "Warning: Sample data initialization failed, continuing..."
+fi
+
+echo "Starting FastAPI application..."
 exec "$@"

@@ -63,7 +63,7 @@ interface AdminStats {
 }
 
 export default function AdminDashboard() {
-  const { user } = useAuth();
+  const { user: currentUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -75,8 +75,8 @@ export default function AdminDashboard() {
     subscription_plan: '',
   });
 
-  // Only allow admin users
-  if (user?.subscription_plan !== 'admin') {
+// Only allow admin users
+  if (currentUser?.subscription_plan !== 'admin') {
     return (
       <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
         <Alert severity="error">
@@ -323,32 +323,32 @@ export default function AdminDashboard() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {users.map((user) => (
-                  <TableRow key={user.id}>
+{users.map((u) => (
+                  <TableRow key={u.id}>
                     <TableCell>
                       <Box>
-                        <Typography variant="subtitle2">{user.email}</Typography>
+<Typography variant="subtitle2">{u.email}</Typography>
                         <Typography variant="caption" color="text.secondary">
-                          ID: {user.id}
+ID: {u.id}
                         </Typography>
                       </Box>
                     </TableCell>
                     <TableCell>
                       <Chip 
-                        label={user.subscription_plan.toUpperCase()}
-                        color={getPlanColor(user.subscription_plan)}
+label={u.subscription_plan.toUpperCase()}
+color={getPlanColor(u.subscription_plan)}
                         size="small"
                         variant="outlined"
                       />
                     </TableCell>
-                    <TableCell>{user.telegram_accounts_count || 0}</TableCell>
-                    <TableCell>{user.jobs_count || 0}</TableCell>
+<TableCell>{u.telegram_accounts_count || 0}</TableCell>
+<TableCell>{u.jobs_count || 0}</TableCell>
                     <TableCell>
-                      {format(new Date(user.created_at), 'MMM dd, yyyy')}
+{format(new Date(u.created_at), 'MMM dd, yyyy')}
                     </TableCell>
                     <TableCell>
-                      {user.last_login ? 
-                        format(new Date(user.last_login), 'MMM dd, HH:mm') : 
+{u.last_login ? 
+                        format(new Date(u.last_login), 'MMM dd, HH:mm') : 
                         'Never'
                       }
                     </TableCell>
@@ -356,16 +356,16 @@ export default function AdminDashboard() {
                       <Box display="flex" gap={1}>
                         <IconButton 
                           size="small" 
-                          onClick={() => handleEditUser(user)}
+onClick={() => handleEditUser(u)}
                           color="primary"
                         >
                           <EditIcon />
                         </IconButton>
                         <IconButton 
                           size="small" 
-                          onClick={() => handleDeleteUser(user.id)}
+onClick={() => handleDeleteUser(u.id)}
                           color="error"
-                          disabled={user.id === user.id} // Prevent self-deletion
+disabled={currentUser ? u.id === currentUser.id : false} // Prevent self-deletion
                         >
                           <DeleteIcon />
                         </IconButton>

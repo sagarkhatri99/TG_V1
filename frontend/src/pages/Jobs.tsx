@@ -15,10 +15,12 @@ import {
   IconButton,
   CircularProgress,
   Alert,
+  Button,
 } from '@mui/material';
-import { PlayArrow, Pause, Delete, Refresh, Download } from '@mui/icons-material';
+import { PlayArrow, Pause, Delete, Refresh, Download, RestartAlt, Analytics } from '@mui/icons-material';
 import type { AxiosResponse } from 'axios';
 import api from '../api/Index';
+import JobReportsDialog from '../components/JobReportsDialog';
 
 interface Job {
   id: number;
@@ -29,12 +31,19 @@ interface Job {
   total_tasks: number;
   created_at: string;
   error_message: string | null;
+  user_description: string | null;
+  messages_sent: number;
+  messages_planned: number;
+  completion_percentage: number;
 }
 
 export default function Jobs() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [alert, setAlert] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+  const [showReports, setShowReports] = useState(false);
+  const [reports, setReports] = useState<any>(null);
+  const [reportsLoading, setReportsLoading] = useState(false);
 
   const fetchJobs = async () => {
     try {
@@ -71,12 +80,40 @@ export default function Jobs() {
     }
   };
 
+  const handleRestart = async (jobId: number) => {
+    try {
+      await api.post(`/api/jobs/${jobId}/restart`);
+      setAlert({ type: 'success', message: 'Job restarted successfully.' });
+      fetchJobs();
+    } catch (error: any) {
+      const message = error?.response?.data?.detail || 'Failed to restart job.';
+      setAlert({ type: 'error', message });
+    }
+  };
+
   const handleDelete = async (jobId: number) => {
+    if (!confirm('Are you sure you want to delete this job? This action cannot be undone.')) {
+      return;
+    }
     try {
       await api.delete(`/api/jobs/${jobId}`);
+      setAlert({ type: 'success', message: 'Job deleted successfully.' });
       fetchJobs();
     } catch (error) {
       setAlert({ type: 'error', message: 'Failed to delete job.' });
+    }
+  };
+
+  const fetchReports = async () => {
+    setReportsLoading(true);
+    try {
+      const response = await api.get('/api/jobs/reports');
+      setReports(response.data);
+      setShowReports(true);
+    } catch (error) {
+      setAlert({ type: 'error', message: 'Failed to fetch job reports.' });
+    } finally {
+      setReportsLoading(false);
     }
   };
 
@@ -103,7 +140,9 @@ export default function Jobs() {
       a.remove();
       window.URL.revokeObjectURL(url);
     } catch (error: any) {
-      const message = error?.response?.data?.detail || 'Failed to download results.';
+      const status = error?.response?.status;
+      const serverMsg = error?.response?.data?.detail;
+      const message = status === 404 ? 'Results not ready yet. Please try again later.' : (serverMsg || 'Failed to download results.');
       setAlert({ type: 'error', message });
     }
   };
@@ -139,9 +178,19 @@ export default function Jobs() {
         <CardContent>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="h6">Job List</Typography>
-            <IconButton onClick={() => { setLoading(true); fetchJobs(); }} disabled={loading}>
-              <Refresh />
-            </IconButton>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button
+                variant="outlined"
+                startIcon={<Analytics />}
+                onClick={fetchReports}
+                disabled={reportsLoading}
+              >
+                {reportsLoading ? <CircularProgress size={20} /> : 'Job Reports'}
+              </Button>
+              <IconButton onClick={() => { setLoading(true); fetchJobs(); }} disabled={loading}>
+                <Refresh />
+              </IconButton>
+            </Box>
           </Box>
           {loading && jobs.length === 0 ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', my: 3 }}>
@@ -154,8 +203,10 @@ export default function Jobs() {
                   <TableRow>
                     <TableCell>ID</TableCell>
                     <TableCell>Type</TableCell>
+                    <TableCell>Description</TableCell>
                     <TableCell>Status</TableCell>
                     <TableCell>Progress</TableCell>
+                    <TableCell>Messages</TableCell>
                     <TableCell>Created At</TableCell>
                     <TableCell>Actions</TableCell>
                   </TableRow>
@@ -165,8 +216,31 @@ export default function Jobs() {
                     <TableRow key={job.id}>
                       <TableCell>{job.id}</TableCell>
                       <TableCell>{job.job_type}</TableCell>
+                      <TableCell>
+                        <Typography variant="body2" title={job.user_description || 'No description'}>
+                          {job.user_description ? (job.user_description.length > 50 ? 
+                            `${job.user_description.substring(0, 50)}...` : 
+                            job.user_description) : 
+                          'No description'}
+                        </Typography>
+                      </TableCell>
                       <TableCell>{getStatusChip(job.status)}</TableCell>
-                      <TableCell>{job.progress}%</TableCell>
+                      <TableCell>
+                        <Typography variant="body2">
+                          {(() => {
+                            const pct = (job.completion_percentage && job.completion_percentage > 0)
+                              ? job.completion_percentage
+                              : job.progress;
+                            const clamped = Math.max(0, Math.min(100, pct));
+                            return `${clamped.toFixed ? clamped.toFixed(1) : clamped}%`;
+                          })()}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2">
+                          {job.messages_sent || 0} / {job.messages_planned || job.total_tasks || 0}
+                        </Typography>
+                      </TableCell>
                       <TableCell>{new Date(job.created_at).toLocaleString()}</TableCell>
                       <TableCell>
                         {job.status === 'running' || job.status === 'processing' ? (
@@ -174,17 +248,28 @@ export default function Jobs() {
                             <Pause />
                           </IconButton>
                         ) : job.status === 'paused' ? (
-                          <IconButton onClick={() => handleResume(job.id)} size="small">
-                            <PlayArrow />
-                          </IconButton>
+                          <>
+                            <IconButton onClick={() => handleResume(job.id)} size="small" title="Resume">
+                              <PlayArrow />
+                            </IconButton>
+                            <IconButton onClick={() => handleRestart(job.id)} size="small" color="primary" title="Restart">
+                              <RestartAlt />
+                            </IconButton>
+                          </>
                         ) : null}
-                        <IconButton onClick={() => handleDelete(job.id)} size="small" disabled={job.status === 'running'}>
+                        {(job.status === 'completed' || job.status === 'failed') && (
+                          <IconButton onClick={() => handleRestart(job.id)} size="small" color="primary" title="Restart">
+                            <RestartAlt />
+                          </IconButton>
+                        )}
+                        <IconButton onClick={() => handleDelete(job.id)} size="small" disabled={job.status === 'running'} color="error">
                           <Delete />
                         </IconButton>
-                        {job.job_type === 'group_monitor' && job.status === 'completed' && (
+                        {job.job_type === 'group_monitor' && (
                           <IconButton
                             onClick={() => handleDownload(job.id)}
                             size="small"
+                            title="Download results"
                           >
                             <Download />
                           </IconButton>
@@ -198,6 +283,12 @@ export default function Jobs() {
           )}
         </CardContent>
       </Card>
+      
+      <JobReportsDialog
+        open={showReports}
+        onClose={() => setShowReports(false)}
+        reports={reports}
+      />
     </Box>
   );
 }

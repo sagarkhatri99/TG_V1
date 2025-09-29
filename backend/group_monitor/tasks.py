@@ -32,9 +32,15 @@ async def _group_monitor_runner(job: Job, db: Session):
 
     client = await session_manager.get_client(account)
 
-    found_messages = []
     processed_messages = 0
     error_messages = []
+
+    filename = f"/app/job_results/monitored_messages_job_{job.id}.csv"
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    # Initialize CSV early so users can download partial results
+    f = open(filename, 'w', encoding='utf-8', newline='')
+    writer = csv.DictWriter(f, fieldnames=["group", "user", "text", "timestamp"])
+    writer.writeheader()
 
     async with client:
         for group_username in group_usernames:
@@ -58,29 +64,21 @@ async def _group_monitor_runner(job: Job, db: Session):
                     any(keyword.lower() in msg_text.lower() for keyword in keywords)
                     or (sender_username in monitored_users if sender_username else False)
                 ):
-                    found_messages.append({
+                    writer.writerow({
                         "group": group_username,
                         "user": sender_username,
                         "text": msg_text,
                         "timestamp": message.date.isoformat() if message.date else ""
                     })
+                    f.flush()
 
                 if processed_messages % 10 == 0:
                     total_expected = max(1, (limit * max(1, len(group_usernames))))
                     job.progress = min(99, (processed_messages / total_expected) * 100)
                     db.commit()
 
-    if not found_messages and error_messages:
-        raise Exception(f"Job failed. Could not find any of the specified groups. Errors: {', '.join(error_messages)}")
+    f.close()
 
-    filename = f"/app/job_results/monitored_messages_job_{job.id}.csv"
-    os.makedirs(os.path.dirname(filename), exist_ok=True)
-    with open(filename, 'w', encoding='utf-8', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=["group", "user", "text", "timestamp"])
-        writer.writeheader()
-        for msg in found_messages:
-            writer.writerow(msg)
-    
     if error_messages:
         job.error_message = f"Completed with some errors: {', '.join(error_messages)}"
         db.commit()
