@@ -10,7 +10,7 @@ import time
 from datetime import datetime, timedelta
 import asyncio
 import os
-from telethon.errors import FloodWaitError, ChatWriteForbiddenError
+from pyrogram.errors import FloodWait, ChatWriteForbidden
 
 logger = logging.getLogger(__name__)
 
@@ -99,11 +99,11 @@ async def _auto_promo_runner(job: Job, db: Session):
                 db.commit()
 
 
-            except ChatWriteForbiddenError as e:
+            except ChatWriteForbidden as e:
                 raise Exception(f"Cannot send message to '{target_group}'. The account may not have permission to post, or it might be a channel where posting is restricted.") from e
-            except FloodWaitError as e:
-                logger.warning(f"Flood wait error for job {job.id}: {e}. Retrying in {e.seconds} seconds.")
-                await asyncio.sleep(e.seconds)
+            except FloodWait as e:
+                logger.warning(f"Flood wait error for job {job.id}: {e}. Retrying in {e.value} seconds.")
+                await asyncio.sleep(e.value)
                 continue # Skip to the next iteration's sleep
 
             sleep_time = interval_seconds
@@ -113,7 +113,7 @@ async def _auto_promo_runner(job: Job, db: Session):
             logger.info(f"Job {job.id} sleeping for {sleep_time} seconds.")
             await asyncio.sleep(sleep_time)
 
-@celery_app.task(bind=True, max_retries=3)
+@celery_app.task(bind=True, max_retries=3, queue='telegram_jobs')
 def auto_promo_task(self, job_id: int):
     db: Session = SessionLocal()
     job = db.query(Job).filter(Job.id == job_id).first()

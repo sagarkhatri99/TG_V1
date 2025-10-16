@@ -1,4 +1,4 @@
-from telethon import TelegramClient
+from pyrogram import Client
 import asyncio
 import random
 from typing import Dict, Optional
@@ -12,36 +12,40 @@ class SessionManager:
         self.session_folder = session_folder
         os.makedirs(self.session_folder, exist_ok=True)
         # This cache holds active client connections.
-        self.active_clients: Dict[int, TelegramClient] = {}
+        self.active_clients: Dict[int, Client] = {}
 
-    async def get_client(self, account) -> TelegramClient:
+    async def get_client(self, account) -> Client:
         """Get a cached client or create a new one."""
         if account.id not in self.active_clients:
             self.active_clients[account.id] = await self._create_client(account)
         
         client = self.active_clients[account.id]
-        if not client.is_connected():
-            await client.connect()
+        if not client.is_connected:
+            await client.start()
         return client
 
     async def _create_client(self, account):
         """Create a new client instance."""
-        session_path = os.path.join(self.session_folder, f"account_{account.id}.session")
+        session_path = os.path.join(self.session_folder, f"account_{account.id}")
 
-        proxy_details = None
+        proxy = None
         if account.proxy:
             try:
                 from urllib.parse import urlparse
                 parsed_url = urlparse(account.proxy.proxy_url)
-                proxy_details = (parsed_url.scheme, parsed_url.hostname, parsed_url.port)
+                proxy = {
+                    "scheme": parsed_url.scheme,
+                    "hostname": parsed_url.hostname,
+                    "port": parsed_url.port,
+                }
             except Exception as e:
                 logger.error(f"Failed to parse proxy URL {account.proxy.proxy_url}: {e}")
 
-        client = TelegramClient(
-            session_path,
-            int(account.api_id),
-            account.api_hash,
-            proxy=proxy_details,
+        client = Client(
+            name=session_path,
+            api_id=int(account.api_id),
+            api_hash=account.api_hash,
+            proxy=proxy,
             device_model=self._generate_device_model(),
             system_version=self._generate_system_version(),
             app_version=self._generate_app_version(),
@@ -53,8 +57,8 @@ class SessionManager:
     async def disconnect_client(self, account_id: int):
         """Disconnect and remove a client from the cache."""
         client = self.active_clients.pop(account_id, None)
-        if client and client.is_connected():
-            await client.disconnect()
+        if client and client.is_connected:
+            await client.stop()
 
     def _generate_device_model(self) -> str:
         models = ["iPhone 12 Pro", "iPhone 13", "iPhone 14", "Samsung Galaxy S21", "Google Pixel 6"]

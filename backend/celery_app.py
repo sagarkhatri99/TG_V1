@@ -16,6 +16,8 @@ celery_app = Celery(
     ]
 )
 
+from kombu import Queue
+
 celery_app.conf.update(
     task_track_started=True,
     result_expires=3600,
@@ -24,6 +26,11 @@ celery_app.conf.update(
     result_serializer='json',
     timezone='UTC',
     enable_utc=True,
+    task_queues=(
+        Queue('celery'),
+        Queue('telegram_jobs'),
+    ),
+    task_default_queue='celery',
 )
 
 if __name__ == '__main__':

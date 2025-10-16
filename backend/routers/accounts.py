@@ -234,7 +234,7 @@ async def pause_account(account_id: int, db: Session = Depends(get_db), current_
     return {"status": "paused", "jobs_affected": len(running_jobs)}
 
 @router.post("/{account_id}/resume")
-async def resume_account(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def resume_account(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(plan_based_dependency("accounts"))):
     account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id, TelegramAccount.user_id == current_user.id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found or not owned by user")

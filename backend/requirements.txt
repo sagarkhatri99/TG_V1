@@ -17,6 +17,8 @@ alembic==1.13.1
 pytest==8.3.2
 pytest-asyncio==0.23.8
 httpx==0.25.2
+pyrogram==2.0.106
+tgcrypto==1.2.5
 celery==5.3.6
 redis==4.3.4
 python-jose[cryptography]==3.3.0
