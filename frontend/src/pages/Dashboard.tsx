@@ -1,221 +1,70 @@
-import { useEffect, useState } from 'react';
-import {
-  Card,
-  CardContent,
-  Typography,
-  Box,
-  Paper,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  Chip,
-  CircularProgress,
-} from '@mui/material';
+import React, { useState, useEffect } from 'react';
+import { Box, Typography, Grid, Paper, Chip } from '@mui/material';
+import { useQuery } from '@tanstack/react-query';
+import axios from 'axios';
+import { useAuth } from '../context/AuthContext';
 
-import {
-  AccountCircle,
-  TrendingUp,
-  Security,
-  Speed,
-  CheckCircle,
-  Warning,
-  Error,
-} from '@mui/icons-material';
-import api, { endpoints } from '../api/Index';
-import type { SystemStats, TelegramAccount } from '../Types/Index';
-
-
-
-export default function Dashboard() {
-const [stats, setStats] = useState<SystemStats | null>(null);
-  const [meStats, setMeStats] = useState<{active_accounts:number; active_sessions:number} | null>(null);
-  const [accounts, setAccounts] = useState<TelegramAccount[]>([]);
-  const [loading, setLoading] = useState(true);
-
+const Dashboard: React.FC = () => {
+  const { data: stats, isLoading } = useQuery({
+    queryKey: ['stats'],
+    queryFn: () => axios.get('/api/jobs/reports').then(res => res.data.summary)
+  });
+  const { user } = useAuth();
+  const [timeLeft, setTimeLeft] = useState('');
 
   useEffect(() => {
-const fetchData = async () => {
-      try {
-        const [statsResponse, accountsResponse, meStatsResponse] = await Promise.all([
-          api.get(endpoints.stats),
-          api.get(endpoints.accounts.list),
-          api.get(endpoints.me.stats),
-        ]);
-        setStats(statsResponse.data);
-        setAccounts(accountsResponse.data.accounts || []);
-        setMeStats(meStatsResponse.data);
-      } catch (error) {
-        console.error('Failed to fetch dashboard data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
+    if (user?.status === 'trial' && user.trial_end_date) {
+      const interval = setInterval(() => {
+        const now = new Date();
+        const endDate = new Date(user.trial_end_date);
+        const diff = endDate.getTime() - now.getTime();
 
+        if (diff <= 0) {
+          setTimeLeft('Trial expired');
+          clearInterval(interval);
+          return;
+        }
 
-    fetchData();
-  }, []);
-
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'active': return <CheckCircle color="success" />;
-      case 'paused': return <Warning color="warning" />;
-      case 'error': return <Error color="error" />;
-      default: return <Warning color="action" />;
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        setTimeLeft(`${days}d ${hours}h ${minutes}m left`);
+      }, 1000);
+      return () => clearInterval(interval);
     }
-  };
+  }, [user]);
 
-
-  const getStatusColor = (status: string): any => {
-    switch (status) {
-      case 'active': return 'success';
-      case 'paused': return 'warning';
-      case 'error': return 'error';
-      default: return 'default';
-    }
-  };
-
-
-  if (loading) {
-    return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="400px">
-        <CircularProgress />
-      </Box>
-    );
-  }
-
+  if (isLoading) return <p>Loading...</p>;
 
   return (
     <Box>
       <Typography variant="h4" gutterBottom>
         Dashboard
       </Typography>
-      <Typography variant="body1" color="text.secondary" gutterBottom>
-        Welcome to TG Tools. Monitor your Telegram automation activities.
-      </Typography>
-
-
-      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, flexWrap: 'wrap', gap: 3, mb: 4 }}>
-        <Box sx={{ flex: { xs: '1 1 100%', sm: '1 1 calc(50% - 12px)', md: '1 1 calc(25% - 18px)' } }}>
-          <Card>
-            <CardContent>
-              <Box display="flex" alignItems="center" justifyContent="space-between">
-                <Box>
-                  <Typography color="text.secondary" variant="body2">
-                    Active Accounts
-                  </Typography>
-                  <Typography variant="h4">
-{meStats?.active_accounts ?? accounts.filter(a => a.status === 'active').length}
-                  </Typography>
-                </Box>
-                <AccountCircle color="primary" />
-              </Box>
-            </CardContent>
-          </Card>
-        </Box>
-
-        <Box sx={{ flex: { xs: '1 1 100%', sm: '1 1 calc(50% - 12px)', md: '1 1 calc(25% - 18px)' } }}>
-          <Card>
-            <CardContent>
-              <Box display="flex" alignItems="center" justifyContent="space-between">
-                <Box>
-                  <Typography color="text.secondary" variant="body2">
-                    Active Sessions
-                  </Typography>
-                  <Typography variant="h4">
-{meStats?.active_sessions ?? 0}
-                  </Typography>
-                </Box>
-                <TrendingUp color="secondary" />
-              </Box>
-            </CardContent>
-          </Card>
-        </Box>
-
-        <Box sx={{ flex: { xs: '1 1 100%', sm: '1 1 calc(50% - 12px)', md: '1 1 calc(25% - 18px)' } }}>
-          <Card>
-            <CardContent>
-              <Box display="flex" alignItems="center" justifyContent="space-between">
-                <Box>
-                  <Typography color="text.secondary" variant="body2">
-                    Safety Score
-                  </Typography>
-                  <Typography variant="h4">98%</Typography>
-                </Box>
-                <Security color="success" />
-              </Box>
-            </CardContent>
-          </Card>
-        </Box>
-
-        <Box sx={{ flex: { xs: '1 1 100%', sm: '1 1 calc(50% - 12px)', md: '1 1 calc(25% - 18px)' } }}>
-          <Card>
-            <CardContent>
-              <Box display="flex" alignItems="center" justifyContent="space-between">
-                <Box>
-                  <Typography color="text.secondary" variant="body2">
-                    System Status
-                  </Typography>
-                  <Typography variant="h4">
-                    {stats?.system_status || 'Unknown'}
-                  </Typography>
-                </Box>
-                <Speed color={stats?.system_status === 'operational' ? 'success' : 'warning'} />
-              </Box>
-            </CardContent>
-          </Card>
-        </Box>
-      </Box>
-
-      <Box sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 3 }}>
-        <Box sx={{ flex: 1 }}>
+      <Chip label={`Subscription: ${user?.subscription_plan}`} color="primary" sx={{ mb: 2 }} />
+      {user?.status === 'trial' && <Chip label={`Trial ends in: ${timeLeft}`} color="secondary" sx={{ mb: 2, ml: 1 }} />}
+      <Grid container spacing={3}>
+        <Grid item xs={12} md={4}>
           <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              Recent Accounts
-            </Typography>
-            <List>
-              {accounts.slice(0, 5).map((account) => (
-                <ListItem key={account.id}>
-                  <ListItemIcon>
-                    {getStatusIcon(account.status)}
-                  </ListItemIcon>
-                  <ListItemText
-                    primary={account.nickname}
-                    secondary={account.phone_number}
-                  />
-                  <Chip
-                    label={account.status}
-                    color={getStatusColor(account.status)}
-                    size="small"
-                  />
-                </ListItem>
-              ))}
-            </List>
+            <Typography variant="h6">Total Jobs</Typography>
+            <Typography variant="h4">{stats?.total_jobs}</Typography>
           </Paper>
-        </Box>
-
-        <Box sx={{ flex: 1 }}>
+        </Grid>
+        <Grid item xs={12} md={4}>
           <Paper sx={{ p: 2 }}>
-            <Typography variant="h6" gutterBottom>
-              Safety Features
-            </Typography>
-            <List>
-              {stats?.safety_features && Object.entries(stats.safety_features).map(([key, value]) => (
-                <ListItem key={key}>
-                  <ListItemIcon>
-                    <CheckCircle color={value === 'active' ? 'success' : 'action'} />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary={key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                    secondary={String(value)}
-                  />
-                </ListItem>
-              ))}
-            </List>
+            <Typography variant="h6">Completion Rate</Typography>
+            <Typography variant="h4">{stats?.completion_rate}%</Typography>
           </Paper>
-        </Box>
-      </Box>
+        </Grid>
+        <Grid item xs={12} md={4}>
+          <Paper sx={{ p: 2 }}>
+            <Typography variant="h6">Total Messages Sent</Typography>
+            <Typography variant="h4">{stats?.total_messages_sent}</Typography>
+          </Paper>
+        </Grid>
+      </Grid>
     </Box>
   );
-}
+};
+
+export default Dashboard;

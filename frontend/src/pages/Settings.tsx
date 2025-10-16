@@ -1,15 +1,17 @@
+import React from 'react';
+import { Box, Typography } from '@mui/material';
 
-import { Box, Typography, Card, CardContent } from '@mui/material';
-
-export default function Settings() {
+const Settings: React.FC = () => {
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>Settings</Typography>
-      <Card>
-        <CardContent>
-          <Typography>Configuration settings coming soon...</Typography>
-        </CardContent>
-      </Card>
+      <Typography variant="h4" gutterBottom>
+        Settings
+      </Typography>
+      <Typography>
+        Settings page placeholder.
+      </Typography>
     </Box>
   );
-}
+};
+
+export default Settings;

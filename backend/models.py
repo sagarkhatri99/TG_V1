@@ -85,6 +85,7 @@ class Job(Base):
     messages_sent = Column(Integer, default=0)  # Actual messages sent
     messages_planned = Column(Integer, default=0)  # Total messages supposed to send
     completion_percentage = Column(Float, default=0.0)  # Calculated percentage
+    result_path = Column(String(255), nullable=True)  # Path to the result file
 
 class MessageLog(Base):
     __tablename__ = "message_logs"

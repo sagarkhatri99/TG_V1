@@ -13,7 +13,7 @@ import os
 # Set the database URL from the environment variable
 from dotenv import load_dotenv
 load_dotenv()
-database_url = os.getenv("DATABASE_URL")
+database_url = os.getenv("LOCAL_DATABASE_URL", os.getenv("DATABASE_URL"))
 if database_url:
     config.set_main_option('sqlalchemy.url', database_url)
 

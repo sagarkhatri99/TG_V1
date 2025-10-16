@@ -1,9 +1,12 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
+import Cookies from 'js-cookie';
+import axiosInstance from '../api/axios';
 
 interface User {
     id: number;
     email: string;
     subscription_plan: string;
+    status: string;
 }
 
 interface AuthContextType {
@@ -18,7 +21,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
+    const [token, setToken] = useState<string | null>(localStorage.getItem('token') || Cookies.get('access_token'));
     const [user, setUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -26,25 +29,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const fetchUser = async () => {
             if (token) {
                 try {
-                    const response = await fetch('/api/auth/users/me', {
-                        headers: {
-                            Authorization: `Bearer ${token}`,
-                        },
-                    });
-                    if (response.ok) {
-                        const userData = await response.json();
-                        setUser(userData);
-                    } else {
-                        // Token is invalid
-                        localStorage.removeItem('token');
-                        setToken(null);
-                        setUser(null);
-                    }
+                    const response = await axiosInstance.get('/auth/verify');
+                    setUser(response.data);
                 } catch (error) {
                     console.error('Failed to fetch user', error);
                     localStorage.removeItem('token');
+                    Cookies.remove('access_token');
                     setToken(null);
                     setUser(null);
+                    window.location.href = 'https://ogtools.shop/login';
                 }
             }
             setIsLoading(false);
@@ -60,8 +53,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const logout = () => {
         localStorage.removeItem('token');
+        Cookies.remove('access_token');
         setToken(null);
         setUser(null);
+        window.location.href = 'https://ogtools.shop/login';
     };
 
     return (

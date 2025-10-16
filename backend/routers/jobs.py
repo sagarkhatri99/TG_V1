@@ -197,6 +197,52 @@ async def restart_job(
         "dispatched": dispatched
     }
 
+@router.get("/{job_id}/result")
+async def get_job_result(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(plan_based_dependency("jobs_basic"))
+):
+    """Get the result of a job"""
+
+    job = db.query(Job).filter(Job.id == job_id, Job.user_id == current_user.id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found or not owned by user")
+
+    if job.status != 'completed':
+        raise HTTPException(status_code=400, detail="Job is not yet completed")
+
+    if not job.result_path:
+        raise HTTPException(status_code=404, detail="Result file not found for this job")
+
+    # In a real application, you would return a URL to a file on a cloud storage service like S3.
+    # For this example, we'll just return the path to the file on the local server.
+    return {"result_url": f"/downloads/{job.result_path}"}
+
+@router.put("/{job_id}/status")
+async def update_job_status(
+    job_id: int,
+    status: str = Form(...),
+    error_message: Optional[str] = Form(None),
+    db: Session = Depends(get_db)
+):
+    """Update the status of a job (for internal use by Celery)"""
+
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    job.status = status
+    if error_message:
+        job.error_message = error_message
+
+    if status == 'completed':
+        job.completed_at = datetime.utcnow()
+
+    db.commit()
+
+    return {"status": "updated"}
+
 @router.delete("/{job_id}")
 async def delete_job(
     job_id: int,

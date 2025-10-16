@@ -28,11 +28,11 @@ class AccountUpdate(BaseModel):
     api_id: Optional[int] = None
     api_hash: Optional[str] = None
 
-@router.post("/create")
-async def create_account(
+@router.post("/add")
+async def add_account(
+    phone_number: str = Form(...),
     api_id: int = Form(...),
     api_hash: str = Form(...),
-    phone_number: str = Form(...),
     nickname: str = Form(...),
     proxy_id: Optional[int] = Form(None),
     db: Session = Depends(get_db),
@@ -67,44 +67,16 @@ async def create_account(
     db.add(account)
     db.commit()
     db.refresh(account)
-    return {"account_id": account.id, "status": "created", "next_step": "verify_phone"}
-
-class AccountUpdate(BaseModel):
-    proxy_id: Optional[int] = None
-    nickname: Optional[str] = None
-
-@router.patch("/{account_id}", response_model=AccountUpdate)
-async def update_account(account_id: int, account_update: AccountUpdate, db: Session = Depends(get_db), current_user: User = Depends(plan_based_dependency("accounts"))):
-    account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id, TelegramAccount.user_id == current_user.id).first()
-    if not account:
-        raise HTTPException(status_code=404, detail="Account not found or not owned by user")
-
-    if account_update.proxy_id is not None:
-        account.proxy_id = account_update.proxy_id
-    if account_update.nickname is not None:
-        account.nickname = account_update.nickname
-
-    db.commit()
-    db.refresh(account)
-    return account
-
-@router.post("/{account_id}/send-code")
-async def send_verification_code(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(plan_based_dependency("accounts"))):
-    account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id, TelegramAccount.user_id == current_user.id).first()
-    if not account:
-        raise HTTPException(status_code=404, detail="Account not found or not owned by user")
 
     try:
-        # Get a cached client to maintain the auth state
         client = await session_manager.get_client(account)
-        await client.send_code_request(account.phone_number)
-        # Add a small delay to allow for network operations like DC migration
-        await asyncio.sleep(1)
-        return {"status": "code_sent", "message": "OTP sent to your phone"}
+        await client.start()
+        await client.send_code(phone_number)
+        await client.stop()
+        return {"account_id": account.id, "status": "verification_needed"}
     except Exception as e:
-        # If something goes wrong, disconnect to ensure a fresh start next time
-        await session_manager.disconnect_client(account_id)
-        raise HTTPException(status_code=400, detail=f"Failed to send code: {str(e)}")
+        await session_manager.disconnect_client(account.id)
+        raise HTTPException(status_code=400, detail=f"Failed to send verification code: {e}")
 
 @router.post("/{account_id}/verify")
 async def verify_account(account_id: int, otp_code: str = Form(...), password: Optional[str] = Form(None), db: Session = Depends(get_db), current_user: User = Depends(plan_based_dependency("accounts"))):
@@ -121,45 +93,24 @@ async def verify_account(account_id: int, otp_code: str = Form(...), password: O
         else:
             await client.sign_in(phone=account.phone_number, code=otp_code)
         
-        # On success, perform connection test to verify account is working
-        try:
-            # Test connection immediately after verification
-            me = await client.get_me()
-            if me:
-                account.status = 'active'
-                account.last_activity = datetime.utcnow()
-                db.commit()
-                await session_manager.disconnect_client(account_id)
-                return {
-                    "status": "verified", 
-                    "account_id": account.id,
-                    "connection_test": "passed",
-                    "user_info": {
-                        "user_id": me.id,
-                        "username": me.username,
-                        "first_name": me.first_name
-                    }
-                }
-            else:
-                account.status = 'error'
-                db.commit()
-                await session_manager.disconnect_client(account_id)
-                return {
-                    "status": "verified_but_connection_failed", 
-                    "account_id": account.id,
-                    "message": "Account verified but connection test failed"
-                }
-        except Exception as test_error:
-            # If connection test fails, still mark as verified but with error status
-            account.status = 'error'
+        me = await client.get_me()
+        if me:
+            account.status = 'active'
+            account.trust_score = random.randint(70, 100)
             account.last_activity = datetime.utcnow()
             db.commit()
             await session_manager.disconnect_client(account_id)
             return {
-                "status": "verified_but_connection_failed", 
+                "status": "verified",
                 "account_id": account.id,
-                "message": f"Account verified but connection test failed: {str(test_error)}"
+                "user_info": {
+                    "user_id": me.id,
+                    "username": me.username,
+                    "first_name": me.first_name
+                }
             }
+        else:
+            raise HTTPException(status_code=400, detail="Verification failed: Could not get user info.")
     except Exception as e:
         # If verification fails, disconnect to ensure a fresh start next time
         await session_manager.disconnect_client(account_id)

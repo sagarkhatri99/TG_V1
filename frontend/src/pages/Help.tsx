@@ -1,14 +1,17 @@
-import { Box, Typography, Card, CardContent } from '@mui/material';
+import React from 'react';
+import { Box, Typography } from '@mui/material';
 
-export default function Help() {
+const Help: React.FC = () => {
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>Help & Documentation</Typography>
-      <Card>
-        <CardContent>
-          <Typography>Help documentation coming soon...</Typography>
-        </CardContent>
-      </Card>
+      <Typography variant="h4" gutterBottom>
+        Help
+      </Typography>
+      <Typography>
+        Help page placeholder.
+      </Typography>
     </Box>
   );
-}
+};
+
+export default Help;
