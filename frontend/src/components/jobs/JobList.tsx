@@ -6,7 +6,10 @@ import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper
 const JobList: React.FC = () => {
   const { data, error, isLoading } = useQuery({
     queryKey: ['jobs'],
-    queryFn: () => axios.get('/api/jobs/list').then(res => res.data.jobs),
+    queryFn: () => axios.get('/api/jobs/list').then(res => {
+      console.log(res.data.jobs);
+      return res.data.jobs;
+    }),
     refetchInterval: 10000,
   });
 

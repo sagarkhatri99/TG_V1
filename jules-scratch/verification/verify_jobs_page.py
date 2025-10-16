@@ -1,23 +1,24 @@
 from playwright.sync_api import sync_playwright
 
-def run():
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
+def run(playwright):
+    browser = playwright.chromium.launch(headless=True)
+    context = browser.new_context()
+    page = context.new_page()
 
-        # Navigate to the frontend dev server
-        page.goto("http://localhost:5173") # Default Vite port
+    page.goto("http://localhost:5173/login")
+    page.wait_for_selector("#email", timeout=30000)
+    page.screenshot(path="jules-scratch/verification/login_page.png")
+    page.locator("#email").fill("test@example.com")
+    page.locator("#password").fill("password")
+    page.locator("button[type='submit']").click()
+    page.wait_for_url("http://localhost:5173/")
 
-        # Click the "Jobs" link in the sidebar
-        page.get_by_role("link", name="Jobs").click()
+    page.goto("http://localhost:5173/jobs")
+    page.wait_for_selector("text=Job ID")
+    page.screenshot(path="jules-scratch/verification/verification.png")
 
-        # Wait for the Jobs page to load by checking for the heading
-        page.wait_for_selector('h4:has-text("Job Management")')
+    context.close()
+    browser.close()
 
-        # Take a screenshot of the page
-        page.screenshot(path="jules-scratch/verification/verification.png")
-
-        browser.close()
-
-if __name__ == "__main__":
-    run()
+with sync_playwright() as playwright:
+    run(playwright)
