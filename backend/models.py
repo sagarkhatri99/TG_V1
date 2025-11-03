@@ -23,14 +23,14 @@ class TelegramAccount(Base):
     __tablename__ = "telegram_accounts"
     
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     nickname = Column(String(100))
     phone_number = Column(String(20), unique=True)
     api_id = Column(String(50))
     api_hash = Column(String(255))
     session_string = Column(Text)
     proxy_id = Column(Integer, ForeignKey("proxies.id"), nullable=True)
-    status = Column(String(20), default="pending")
+    status = Column(String(20), default="pending", index=True)
     trust_score = Column(Integer, default=50)
     last_activity = Column(DateTime)
     daily_message_count = Column(Integer, default=0)
@@ -56,7 +56,7 @@ class UserInteraction(Base):
     __tablename__ = "user_interactions"
     
     id = Column(Integer, primary_key=True, index=True)
-    telegram_account_id = Column(Integer, ForeignKey("telegram_accounts.id"))
+    telegram_account_id = Column(Integer, ForeignKey("telegram_accounts.id"), index=True)
     target_user_id = Column(String(50))
     target_username = Column(String(100))
     last_interaction = Column(DateTime)
@@ -95,13 +95,13 @@ class MessageLog(Base):
     __tablename__ = "message_logs"
     
     id = Column(Integer, primary_key=True, index=True)
-    telegram_account_id = Column(Integer, ForeignKey("telegram_accounts.id"))
+    telegram_account_id = Column(Integer, ForeignKey("telegram_accounts.id"), index=True)
     job_id = Column(Integer, ForeignKey("jobs.id"), nullable=True)
     target_user_id = Column(String(50))
     target_username = Column(String(100))
     message_content = Column(Text)
     ai_relevance_score = Column(Float)
-    delivery_status = Column(String(20))
+    delivery_status = Column(String(20), index=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
 

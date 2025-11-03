@@ -1,3 +1,5 @@
+import os
+import sentry_sdk
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -21,6 +23,17 @@ from models import TelegramAccount, MessageLog, UserInteraction
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Initialize Sentry
+sentry_sdk.init(
+    dsn=os.environ.get("SENTRY_DSN"),
+    # Set traces_sample_rate to 1.0 to capture 100%
+    # of transactions for performance monitoring.
+    traces_sample_rate=1.0,
+    # Set profiles_sample_rate to 1.0 to profile 100%
+    # of sampled transactions.
+    profiles_sample_rate=1.0,
+)
 
 app = FastAPI(title="TG Tools Backend", version="2.0.0")
 
@@ -47,7 +60,7 @@ def read_root():
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "version": "2.0.0"}
+    return {"status": "ok"}
 
 @app.get("/stats")
 def system_stats(db: Session = Depends(get_db)):

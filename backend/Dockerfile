@@ -35,6 +35,10 @@ RUN sed -i 's/\r$//' /app/entrypoint.sh \
 # Expose port for backend
 EXPOSE 8000
 
+# Health check to ensure the API is responsive
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
+  CMD curl --fail http://localhost:8000/health || exit 1
+
 # Set the entrypoint
 ENTRYPOINT ["/bin/bash", "/app/entrypoint.sh"]
 

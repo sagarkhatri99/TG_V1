@@ -21,3 +21,4 @@ celery==5.3.6
 redis==4.3.4
 python-jose[cryptography]==3.3.0
 requests==2.32.5
+sentry-sdk[fastapi]

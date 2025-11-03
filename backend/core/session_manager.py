@@ -13,13 +13,10 @@ from core.config import settings
 
 logger = logging.getLogger(__name__)
 
+
 class SessionManager:
-    def __init__(self, session_folder: str = "/app/sessions"):
-        # Retain folder reference for optional migration compatibility, but
-        # StringSession eliminates the need for file-based sessions.
-        self.session_folder = session_folder
-        os.makedirs(self.session_folder, exist_ok=True)
-        # Cache active clients per account id
+    def __init__(self):
+        # NOTE: Using StringSession (DB-based). File-based sessions are deprecated.
         self.active_clients: Dict[int, TelegramClient] = {}
 
     async def get_client(self, account: TelegramAccount) -> TelegramClient:
@@ -137,4 +134,4 @@ class SessionManager:
         versions = ["9.3.1", "9.4.0", "9.4.1", "9.5.0", "9.5.1"]
         return random.choice(versions)
 
-session_manager = SessionManager(session_folder="/app/sessions")
+session_manager = SessionManager()

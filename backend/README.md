@@ -18,6 +18,7 @@ DATABASE_URL=postgresql://user:password@db:5432/tg_tools
 OPENAI_API_KEY=your_openai_api_key_here
 REDIS_URL=redis://redis:6379/0
 SECRET_KEY=your-super-secret-key-here
+SENTRY_DSN=your_sentry_dsn_here
 ```
 
 ## Building and Running the Application
@@ -109,3 +110,7 @@ You can log in to Docker Hub by running the following command:
 ```bash
 docker login
 ```
+
+### Deprecated `.session` Files
+
+If you find any `.session` files in the `backend` directory, they are from a deprecated file-based authentication system. They are no longer used and can be safely deleted. The application now uses a database-backed session storage system.
