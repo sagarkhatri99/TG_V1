@@ -39,16 +39,32 @@ async def _mass_dm_runner(job: Job, db: Session):
     if image_file_path and not os.path.exists(image_file_path):
         raise FileNotFoundError(f"Image file not found at {image_file_path}")
 
-    try:
-        user_data = pd.read_csv(csv_file_path)
-        if 'user_id' in user_data.columns:
-            ids = user_data['user_id'].tolist()
-        elif 'username' in user_data.columns:
-            ids = user_data['username'].tolist()
-        else:
-            raise Exception("CSV must have a 'user_id' or 'username' column.")
-    except FileNotFoundError:
-        raise Exception(f"CSV file not found at path: {csv_file_path}")
+    # Check if this is a batch job with pre-assigned user IDs
+    ids = []
+    if job.batch_user_ids:
+        # Use pre-assigned batch user IDs
+        try:
+            ids = json.loads(job.batch_user_ids)
+            logger.info(
+                f"Job {job.id} using batch user IDs. "
+                f"Batch {job.batch_number}/{job.total_batches} - {len(ids)} users"
+            )
+        except json.JSONDecodeError:
+            raise Exception("Failed to parse batch_user_ids")
+    elif csv_file_path:
+        # Use traditional CSV file approach
+        try:
+            user_data = pd.read_csv(csv_file_path)
+            if 'user_id' in user_data.columns:
+                ids = user_data['user_id'].tolist()
+            elif 'username' in user_data.columns:
+                ids = user_data['username'].tolist()
+            else:
+                raise Exception("CSV must have a 'user_id' or 'username' column.")
+        except FileNotFoundError:
+            raise Exception(f"CSV file not found at path: {csv_file_path}")
+    else:
+        raise Exception("No user IDs provided (either batch_user_ids or csv_file_path required)")
     
     # Initialize job with total planned messages
     job.messages_planned = len(ids)
@@ -96,6 +112,14 @@ async def _mass_dm_runner(job: Job, db: Session):
                 job.messages_sent = sent_count
                 job.completion_percentage = (sent_count / len(ids)) * 100.0
                 job.progress = int(job.completion_percentage)  # Keep existing progress field for compatibility
+                
+                # Auto-complete job when all messages sent
+                if sent_count >= len(ids):
+                    logger.info(f"Job {job.id} completed (all {len(ids)} messages sent). Marking as completed.")
+                    job.status = 'completed'
+                    job.completed_at = datetime.utcnow()
+                    db.commit()
+                    break  # Exit the loop
                 
                 if (i + 1) % 5 == 0 or (i + 1) == len(ids):
                     db.commit()

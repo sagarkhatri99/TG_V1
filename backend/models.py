@@ -85,6 +85,11 @@ class Job(Base):
     messages_sent = Column(Integer, default=0)  # Actual messages sent
     messages_planned = Column(Integer, default=0)  # Total messages supposed to send
     completion_percentage = Column(Float, default=0.0)  # Calculated percentage
+    # Batch distribution fields
+    parent_job_id = Column(Integer, ForeignKey("jobs.id"), nullable=True)  # Link to parent distribution job
+    batch_number = Column(Integer, nullable=True)  # Which batch this is (1-indexed)
+    total_batches = Column(Integer, nullable=True)  # Total number of batches for this distribution
+    batch_user_ids = Column(Text, nullable=True)  # JSON array of user IDs for this batch
 
 class MessageLog(Base):
     __tablename__ = "message_logs"

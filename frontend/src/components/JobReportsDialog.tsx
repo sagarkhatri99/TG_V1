@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -18,13 +18,16 @@ import {
   Paper,
   Chip,
   LinearProgress,
+  CircularProgress,
 } from '@mui/material';
 import {
   Assessment as AssessmentIcon,
   TrendingUp as TrendingUpIcon,
   Schedule as ScheduleIcon,
   CheckCircle as CheckCircleIcon,
+  Download as DownloadIcon,
 } from '@mui/icons-material';
+import api from '../api/Index';
 
 interface JobReportsDialogProps {
   open: boolean;
@@ -33,9 +36,41 @@ interface JobReportsDialogProps {
 }
 
 const JobReportsDialog: React.FC<JobReportsDialogProps> = ({ open, onClose, reports }) => {
+  const [downloading, setDownloading] = useState(false);
+  
   if (!reports) return null;
 
   const { summary, status_breakdown, job_type_breakdown, recent_completed_jobs } = reports;
+
+  const handleDownloadCSV = async () => {
+    setDownloading(true);
+    try {
+      const response = await api.get('/api/jobs/reports/download', {
+        responseType: 'blob',
+      });
+
+      const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+
+      // Get filename from header or use default
+      const dispo = (response.headers['content-disposition'] || '') as string;
+      const match = dispo.match(/filename="?([^";]+)"?/i);
+      const filename = match ? match[1] : `job_reports_${new Date().toISOString().split('T')[0]}.csv`;
+
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to download CSV:', error);
+      alert('Failed to download job reports. Please try again.');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const getStatusColor = (status: string) => {
     const colorMap: { [key: string]: 'success' | 'warning' | 'error' | 'info' | 'default' } = {
@@ -249,6 +284,14 @@ const JobReportsDialog: React.FC<JobReportsDialogProps> = ({ open, onClose, repo
       </DialogContent>
       
       <DialogActions>
+        <Button 
+          onClick={handleDownloadCSV} 
+          variant="outlined" 
+          startIcon={downloading ? <CircularProgress size={20} /> : <DownloadIcon />}
+          disabled={downloading}
+        >
+          {downloading ? 'Downloading...' : 'Download CSV'}
+        </Button>
         <Button onClick={onClose} variant="contained">
           Close
         </Button>

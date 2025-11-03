@@ -30,7 +30,8 @@ def wait_for_database():
     for attempt in range(max_retries):
         try:
             db = SessionLocal()
-            db.execute("SELECT 1")
+            from sqlalchemy import text
+            db.execute(text("SELECT 1"))
             db.close()
             print("✅ Database connection successful")
             return True
@@ -117,28 +118,7 @@ def create_test_users():
 def create_sample_data():
     """SDR sample data creation removed due to SDR extraction into a separate app."""
     print("Skipping SDR sample data creation in main app.")
-                    user_id=enterprise_user.id,
-                    lead_profile_id=tech_profile.id,
-                    **lead_data,
-                    conversation_score=0.0,
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow()
-                )
-                
-                db.add(lead)
-                db.commit()
-                db.refresh(lead)
-                
-                print(f"✅ Created lead: {lead.first_name} {lead.last_name} (@{lead.telegram_username})")
-        
-        print(f"✅ Sample data creation completed!")
-        
-    except Exception as e:
-        print(f"❌ Error creating sample data: {e}")
-        db.rollback()
-    
-    finally:
-        db.close()
+    return True
 
 def main():
     """Main initialization function"""

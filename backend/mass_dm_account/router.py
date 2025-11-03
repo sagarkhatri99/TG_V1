@@ -10,7 +10,10 @@ from typing import Optional
 import shutil
 import os
 from .tasks import mass_dm_account_task
+from .distribution_service import distribute_users_across_accounts
 from datetime import datetime, timedelta
+import csv
+import io
 
 router = APIRouter()
 
@@ -18,6 +21,136 @@ class MassDMAccountRequest(BaseModel):
     account_id: int
     message: str
     stop_after_hours: Optional[int] = None
+
+class DistributedMassDMRequest(BaseModel):
+    message: str
+    account_ids: list[int]
+    stop_after_hours: Optional[int] = None
+    rate_limit_per_hour: Optional[int] = None
+    delay_seconds: Optional[int] = None
+    min_delay_seconds: Optional[int] = None
+    max_delay_seconds: Optional[int] = None
+    user_description: Optional[str] = None
+
+@router.post("/create-distributed-job")
+async def create_distributed_mass_dm_job(
+    message: str = Form(...),
+    account_ids: str = Form(...),  # JSON string of account IDs
+    user_description: Optional[str] = Form(None),
+    stop_after_hours: Optional[int] = Form(None),
+    rate_limit_per_hour: Optional[int] = Form(None),
+    delay_seconds: Optional[int] = Form(None),
+    min_delay_seconds: Optional[int] = Form(None),
+    max_delay_seconds: Optional[int] = Form(None),
+    csv_file: UploadFile = File(...),
+    image_file: Optional[UploadFile] = File(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(plan_based_dependency("mass_dm"))
+):
+    """
+    Create distributed mass DM jobs across multiple accounts.
+    Automatically splits the user list evenly across selected accounts.
+    """
+    try:
+        # Parse account IDs from JSON string
+        selected_account_ids = json.loads(account_ids)
+        if not isinstance(selected_account_ids, list) or len(selected_account_ids) < 2:
+            raise HTTPException(status_code=400, detail="Please select at least 2 accounts for distribution")
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid account_ids format")
+
+    # Check subscription limits
+    if current_user.subscription_plan == 'pro':
+        if current_user.job_counter_last_reset < datetime.utcnow() - timedelta(days=30):
+            current_user.jobs_created_this_month = 0
+            current_user.job_counter_last_reset = datetime.utcnow()
+            db.commit()
+        # Each batch counts as a job
+        if current_user.jobs_created_this_month + len(selected_account_ids) > 500:
+            raise HTTPException(status_code=403, detail="You would exceed your monthly job limit of 500.")
+
+    # Parse CSV to get user IDs
+    try:
+        csv_content = await csv_file.read()
+        csv_file.file.seek(0)
+        csv_text = csv_content.decode('utf-8')
+        csv_reader = csv.DictReader(io.StringIO(csv_text))
+        
+        user_ids = []
+        for row in csv_reader:
+            if 'user_id' in row and row['user_id']:
+                user_ids.append(row['user_id'].strip())
+            elif 'username' in row and row['username']:
+                user_ids.append(row['username'].strip())
+        
+        if not user_ids:
+            raise HTTPException(status_code=400, detail="CSV file must contain user_id or username column with data")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to parse CSV: {str(e)}")
+
+    try:
+        # Distribute users across accounts
+        created_job_ids, total_users, users_per_batch = distribute_users_across_accounts(
+            user_ids, selected_account_ids, current_user, db
+        )
+        
+        # Now update each created job with the full config and save files
+        upload_dir = "/app/uploads"
+        os.makedirs(upload_dir, exist_ok=True)
+
+        job_config = {
+            "message": message,
+            "stop_after_hours": stop_after_hours,
+            "rate_limit_per_hour": rate_limit_per_hour,
+            "delay_seconds": delay_seconds,
+            "min_delay_seconds": min_delay_seconds,
+            "max_delay_seconds": max_delay_seconds,
+            "distributed": True,  # Mark as distributed
+        }
+
+        # Handle image file if provided
+        image_file_path = None
+        if image_file:
+            image_file_path = os.path.join(upload_dir, f"mass_dm_distributed_image_{image_file.filename}")
+            try:
+                with open(image_file_path, "wb") as buffer:
+                    shutil.copyfileobj(image_file.file, buffer)
+                job_config["image_file_path"] = image_file_path
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to save image file: {e}")
+
+        # Update each batch job with config and dispatch tasks
+        for job_id in created_job_ids:
+            job = db.query(Job).filter(Job.id == job_id).first()
+            if job:
+                job.config = json.dumps(job_config)
+                db.commit()
+                # Dispatch the task to workers
+                mass_dm_account_task.delay(job_id)
+
+        # Update job counter for pro users
+        if current_user.subscription_plan == 'pro':
+            current_user.jobs_created_this_month += len(created_job_ids)
+            db.commit()
+
+        return {
+            "success": True,
+            "message": f"Created {len(created_job_ids)} distributed Mass DM jobs",
+            "job_ids": created_job_ids,
+            "total_users": total_users,
+            "num_accounts": len(selected_account_ids),
+            "users_per_batch": users_per_batch,
+            "distribution_summary": {
+                "total_users": total_users,
+                "total_accounts": len(selected_account_ids),
+                "users_per_account": users_per_batch,
+                "last_account_users": total_users - (users_per_batch * (len(selected_account_ids) - 1)),
+            }
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create distributed jobs: {str(e)}")
 
 @router.post("/create-job")
 async def create_mass_dm_account_job(

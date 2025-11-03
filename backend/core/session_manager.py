@@ -1,35 +1,43 @@
 from telethon import TelegramClient
+from telethon.sessions import StringSession
 import asyncio
 import random
-from typing import Dict, Optional
+from typing import Dict
 import logging
 import os
+from datetime import datetime
+
+from database import SessionLocal
+from models import TelegramAccount
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 
 class SessionManager:
-    def __init__(self, session_folder="sessions"):
+    def __init__(self, session_folder: str = "/app/sessions"):
+        # Retain folder reference for optional migration compatibility, but
+        # StringSession eliminates the need for file-based sessions.
         self.session_folder = session_folder
         os.makedirs(self.session_folder, exist_ok=True)
-        # This cache holds active client connections.
+        # Cache active clients per account id
         self.active_clients: Dict[int, TelegramClient] = {}
 
-    async def get_client(self, account) -> TelegramClient:
-        """Get a cached client or create a new one."""
+    async def get_client(self, account: TelegramAccount) -> TelegramClient:
+        """Return a connected TelegramClient using a DB-backed StringSession.
+        If client is not cached, create it. Ensure it's connected before returning.
+        """
         if account.id not in self.active_clients:
             self.active_clients[account.id] = await self._create_client(account)
-        
         client = self.active_clients[account.id]
         if not client.is_connected():
             await client.connect()
         return client
 
-    async def _create_client(self, account):
-        """Create a new client instance."""
-        session_path = os.path.join(self.session_folder, f"account_{account.id}.session")
-
+    async def _create_client(self, account: TelegramAccount) -> TelegramClient:
+        """Create a new TelegramClient bound to a StringSession from DB."""
+        # Build proxy tuple if present
         proxy_details = None
-        if account.proxy:
+        if getattr(account, "proxy", None):
             try:
                 from urllib.parse import urlparse
                 parsed_url = urlparse(account.proxy.proxy_url)
@@ -37,10 +45,40 @@ class SessionManager:
             except Exception as e:
                 logger.error(f"Failed to parse proxy URL {account.proxy.proxy_url}: {e}")
 
+        # Prefer per-account API keys; fallback to env
+        try:
+            api_id = int(account.api_id) if getattr(account, "api_id", None) and str(account.api_id).strip() else settings.TELEGRAM_API_ID
+        except (ValueError, TypeError, AttributeError) as e:
+            logger.error(f"Invalid api_id for account {account.id}: {account.api_id}, error: {e}")
+            api_id = settings.TELEGRAM_API_ID
+        
+        api_hash = account.api_hash if getattr(account, "api_hash", None) and str(account.api_hash).strip() else settings.TELEGRAM_API_HASH
+
+        if not api_id or not api_hash:
+            error_msg = f"Telegram API credentials not configured for account {account.id}. "
+            if not api_id:
+                error_msg += f"api_id is missing or invalid (account.api_id='{account.api_id}', env.TELEGRAM_API_ID='{settings.TELEGRAM_API_ID}'). "
+            if not api_hash:
+                error_msg += f"api_hash is missing or invalid (account.api_hash='{account.api_hash[:10] if account.api_hash else None}...', env.TELEGRAM_API_HASH='{settings.TELEGRAM_API_HASH[:10] if settings.TELEGRAM_API_HASH else None}...'). "
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+
+        # Use DB-backed StringSession; None creates an empty session to be authenticated later
+        session_string = getattr(account, "session_string", None)
+        if session_string and "<telethon.sessions" not in session_string and len(session_string) > 10:
+            try:
+                sess = StringSession(session_string)
+            except Exception as e:
+                logger.warning(f"Invalid session string for account {account.id}, starting fresh: {e}")
+                sess = StringSession()
+        else:
+            logger.info(f"No valid session string for account {account.id}, starting fresh")
+            sess = StringSession()
+
         client = TelegramClient(
-            session_path,
-            int(account.api_id),
-            account.api_hash,
+            sess,
+            api_id,
+            api_hash,
             proxy=proxy_details,
             device_model=self._generate_device_model(),
             system_version=self._generate_system_version(),
@@ -51,9 +89,40 @@ class SessionManager:
         return client
 
     async def disconnect_client(self, account_id: int):
-        """Disconnect and remove a client from the cache."""
+        """Persist the current StringSession to DB and disconnect the client."""
         client = self.active_clients.pop(account_id, None)
-        if client and client.is_connected():
+        if not client:
+            return
+        # Attempt to persist the session string before disconnecting
+        try:
+            session_str = None
+            # StringSession returns a string via save() method
+            try:
+                if hasattr(client.session, "save"):
+                    session_str = client.session.save()
+                else:
+                    # Fallback to __str__ if save() is not available
+                    session_str = str(client.session)
+                    # Ensure it's not the object representation
+                    if "<telethon.sessions" in session_str:
+                        session_str = None
+            except Exception as save_error:
+                logger.warning(f"Failed to get session string: {save_error}")
+                session_str = None
+            if session_str:
+                db = SessionLocal()
+                try:
+                    account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id).first()
+                    if account:
+                        account.session_string = session_str
+                        account.last_activity = datetime.utcnow()
+                        db.commit()
+                finally:
+                    db.close()
+        except Exception as e:
+            logger.warning(f"Failed to persist session for account {account_id}: {e}")
+        # Finally, disconnect
+        if client.is_connected():
             await client.disconnect()
 
     def _generate_device_model(self) -> str:

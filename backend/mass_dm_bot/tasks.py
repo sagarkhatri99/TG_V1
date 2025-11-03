@@ -73,6 +73,14 @@ async def _mass_dm_bot_runner(job: Job, db: Session):
             job.completion_percentage = (sent_count / len(ids)) * 100.0
             job.progress = int(job.completion_percentage)  # Keep existing progress field for compatibility
 
+            # Auto-complete job when all messages sent
+            if sent_count >= len(ids):
+                logger.info(f"Job {job.id} completed (all {len(ids)} messages sent). Marking as completed.")
+                job.status = 'completed'
+                job.completed_at = datetime.utcnow()
+                db.commit()
+                break  # Exit the loop
+
             if (i + 1) % 5 == 0 or (i + 1) == len(ids):
                 db.commit()
 

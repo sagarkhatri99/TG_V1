@@ -117,9 +117,10 @@ export default function Jobs() {
     }
   };
 
-  const handleDownload = async (jobId: number) => {
+  const handleDownload = async (jobId: number, jobType: string) => {
     try {
-      const response: AxiosResponse<Blob> = await api.get('/api/group-monitor/download', {
+      const endpoint = jobType === 'group_monitor' ? '/api/group-monitor/download' : '/api/scrape-users/download';
+      const response: AxiosResponse<Blob> = await api.get(endpoint, {
         params: { job_id: jobId },
         responseType: 'blob',
       });
@@ -131,7 +132,8 @@ export default function Jobs() {
       // Try to infer filename from header
       const dispo = (response.headers['content-disposition'] || '') as string;
       const match = dispo.match(/filename="?([^";]+)"?/i);
-      const filename = match ? match[1] : `monitored_messages_job_${jobId}.csv`;
+      const defaultFilename = jobType === 'group_monitor' ? `monitored_messages_job_${jobId}.csv` : `scraped_users_job_${jobId}.csv`;
+      const filename = match ? match[1] : defaultFilename;
 
       a.href = url;
       a.download = filename;
@@ -265,9 +267,9 @@ export default function Jobs() {
                         <IconButton onClick={() => handleDelete(job.id)} size="small" disabled={job.status === 'running'} color="error">
                           <Delete />
                         </IconButton>
-                        {job.job_type === 'group_monitor' && (
+                        {(job.job_type === 'group_monitor' || job.job_type === 'scrape_users') && (
                           <IconButton
-                            onClick={() => handleDownload(job.id)}
+                            onClick={() => handleDownload(job.id, job.job_type)}
                             size="small"
                             title="Download results"
                           >

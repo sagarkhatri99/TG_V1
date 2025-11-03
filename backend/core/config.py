@@ -4,6 +4,12 @@ from typing import Optional
 class Settings:
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./tg_tools.db")
+
+    # Telegram API
+    TELEGRAM_API_ID: Optional[int] = (
+        int(os.getenv("TELEGRAM_API_ID")) if os.getenv("TELEGRAM_API_ID") else None
+    )
+    TELEGRAM_API_HASH: Optional[str] = os.getenv("TELEGRAM_API_HASH")
     
     # OpenAI
     OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY")

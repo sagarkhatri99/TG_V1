@@ -265,7 +265,10 @@ async def resume_account(account_id: int, db: Session = Depends(get_db), current
     except Exception as e:
         account.status = 'error'
         db.commit()
-        raise HTTPException(status_code=400, detail=f"Connection test failed: {str(e)}")
+        error_msg = str(e)
+        if "api_id" in error_msg or "api_hash" in error_msg or "API credentials" in error_msg:
+            error_msg = "Invalid or missing Telegram API credentials. Please ensure your account has valid api_id and api_hash configured."
+        raise HTTPException(status_code=400, detail=f"Connection test failed: {error_msg}")
     finally:
         # Always disconnect after test
         await session_manager.disconnect_client(account_id)

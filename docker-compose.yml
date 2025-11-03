@@ -38,7 +38,27 @@ services:
 
   worker:
     build: ./backend
-    command: ["celery", "-A", "celery_app", "worker", "-l", "info"]
+    command: ["celery", "-A", "celery_app", "worker", "-l", "info", "--concurrency=12", "--prefetch-multiplier=1"]
+    env_file:
+      - ./backend/.env
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend/sessions:/app/sessions
+      - ./backend/job_results:/app/job_results
+      - ./backend/uploads:/app/uploads
+    restart: unless-stopped
+    networks:
+      - app-network
+    deploy:
+      replicas: 3
+
+  worker-long:
+    build: ./backend
+    command: ["celery", "-A", "celery_app", "worker", "-Q", "long_tasks", "-l", "info", "--concurrency=10", "--prefetch-multiplier=1"]
     env_file:
       - ./backend/.env
     depends_on:
@@ -55,6 +75,44 @@ services:
       - app-network
     deploy:
       replicas: 2
+
+  worker-short:
+    build: ./backend
+    command: ["celery", "-A", "celery_app", "worker", "-Q", "short_tasks", "-l", "info", "--concurrency=15", "--prefetch-multiplier=2"]
+    env_file:
+      - ./backend/.env
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend/sessions:/app/sessions
+      - ./backend/job_results:/app/job_results
+      - ./backend/uploads:/app/uploads
+    restart: unless-stopped
+    networks:
+      - app-network
+    deploy:
+      replicas: 2
+
+  celery-beat:
+    build: ./backend
+    command: ["celery", "-A", "celery_app", "beat", "-l", "info"]
+    env_file:
+      - ./backend/.env
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend/sessions:/app/sessions
+      - ./backend/job_results:/app/job_results
+      - ./backend/uploads:/app/uploads
+    restart: unless-stopped
+    networks:
+      - app-network
 
   db:
     image: postgres:13
@@ -90,7 +148,18 @@ services:
     restart: unless-stopped
     networks:
       - app-network
-    command: redis-server --appendonly yes
+    command: >
+      redis-server 
+      --appendonly yes 
+      --maxmemory 2gb 
+      --maxmemory-policy allkeys-lru
+      --tcp-keepalive 60
+      --timeout 0
+      --tcp-backlog 511
+      --databases 16
+      --save 900 1
+      --save 300 10
+      --save 60 10000
     volumes:
       - redis_data:/data
 

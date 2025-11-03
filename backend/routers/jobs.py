@@ -1,12 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, Form, UploadFile, File
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, nullslast, desc
 from typing import List, Optional
 from models import Job, TelegramAccount, User
 from database import get_db
 from routers.auth import get_current_user
 from core.dependencies import plan_based_dependency
 import json
+import csv
+import io
 from datetime import datetime, timedelta
 
 # Task dispatchers are imported lazily inside the restart endpoint to avoid heavy imports at startup
@@ -258,11 +261,11 @@ async def get_job_reports(
     ).scalar()
     
     # Recent completed jobs with details
+    # Get all completed jobs, prioritize those with completed_at timestamps
     recent_completed = db.query(Job).filter(
         Job.user_id == current_user.id,
-        Job.status == 'completed',
-        Job.completed_at >= thirty_days_ago
-    ).order_by(Job.completed_at.desc()).limit(10).all()
+        Job.status == 'completed'
+    ).order_by(nullslast(desc(Job.completed_at)), desc(Job.created_at)).limit(10).all()
     
     # Format job status stats
     status_breakdown = {status: count for status, count in job_status_stats}
@@ -301,3 +304,97 @@ async def get_job_reports(
         "job_type_breakdown": type_breakdown,
         "recent_completed_jobs": recent_jobs_data
     }
+
+@router.get("/reports/download")
+async def download_job_reports(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(plan_based_dependency("jobs_basic"))
+):
+    """Download comprehensive job reports as CSV"""
+    
+    # Get all jobs for the user
+    jobs = db.query(Job).filter(
+        Job.user_id == current_user.id
+    ).order_by(Job.created_at.desc()).all()
+    
+    # Create CSV in memory
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Write header
+    writer.writerow([
+        'Job ID',
+        'Job Type',
+        'Description',
+        'Status',
+        'Created At',
+        'Started At',
+        'Completed At',
+        'Messages Sent',
+        'Messages Planned',
+        'Completion %',
+        'Duration (hours)',
+        'Error Message'
+    ])
+    
+    # Write job data
+    for job in jobs:
+        duration = None
+        if job.started_at and job.completed_at:
+            duration = round((job.completed_at - job.started_at).total_seconds() / 3600, 2)
+        elif job.started_at and job.status == 'running':
+            duration = round((datetime.utcnow() - job.started_at).total_seconds() / 3600, 2)
+        
+        writer.writerow([
+            job.id,
+            job.job_type,
+            job.user_description or 'N/A',
+            job.status,
+            job.created_at.strftime('%Y-%m-%d %H:%M:%S') if job.created_at else 'N/A',
+            job.started_at.strftime('%Y-%m-%d %H:%M:%S') if job.started_at else 'N/A',
+            job.completed_at.strftime('%Y-%m-%d %H:%M:%S') if job.completed_at else 'N/A',
+            job.messages_sent or 0,
+            job.messages_planned or 0,
+            round(float(job.completion_percentage or 0), 2),
+            duration if duration else 'N/A',
+            job.error_message or 'N/A'
+        ])
+    
+    # Add summary statistics
+    output.write('\n\n')  # Empty lines
+    writer.writerow(['SUMMARY STATISTICS'])
+    writer.writerow([''])
+    
+    # Calculate stats
+    total_jobs = len(jobs)
+    completed_jobs = len([j for j in jobs if j.status == 'completed'])
+    running_jobs = len([j for j in jobs if j.status == 'running'])
+    failed_jobs = len([j for j in jobs if j.status == 'failed'])
+    pending_jobs = len([j for j in jobs if j.status == 'pending'])
+    
+    total_sent = sum([j.messages_sent or 0 for j in jobs])
+    total_planned = sum([j.messages_planned or 0 for j in jobs])
+    
+    writer.writerow(['Metric', 'Value'])
+    writer.writerow(['Total Jobs', total_jobs])
+    writer.writerow(['Completed Jobs', completed_jobs])
+    writer.writerow(['Running Jobs', running_jobs])
+    writer.writerow(['Failed Jobs', failed_jobs])
+    writer.writerow(['Pending Jobs', pending_jobs])
+    writer.writerow(['Completion Rate (%)', round((completed_jobs / total_jobs * 100), 2) if total_jobs > 0 else 0])
+    writer.writerow(['Total Messages Sent', total_sent])
+    writer.writerow(['Total Messages Planned', total_planned])
+    writer.writerow(['Success Rate (%)', round((total_sent / total_planned * 100), 2) if total_planned > 0 else 0])
+    
+    # Prepare for download
+    output.seek(0)
+    
+    # Generate filename with timestamp
+    timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+    filename = f"job_reports_{timestamp}.csv"
+    
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )

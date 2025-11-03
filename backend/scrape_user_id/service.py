@@ -2,6 +2,9 @@ import csv
 import os
 import logging
 from telethon import TelegramClient
+from core.session_manager import session_manager
+from models import TelegramAccount
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 pending_clients = {}
@@ -56,3 +59,46 @@ async def verify_and_scrape(
 
     logger.info(f"Wrote {len(participants)} rows to {filename}")
     return len(participants)
+
+async def scrape_with_existing_account(account: TelegramAccount, group_username: str) -> tuple[int, str]:
+    """
+    Scrape group participants using an existing authenticated Telegram account.
+    Returns (participant_count, filename)
+    """
+    timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+    filename = f"participants_{account.phone_number}_{timestamp}.csv"
+    filepath = f"/app/job_results/{filename}"
+    
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    
+    logger.info(f"Scraping participants from {group_username} using account {account.phone_number}")
+    
+    # Get client from session manager
+    client = await session_manager.get_client(account)
+    
+    try:
+        async with client:
+            # Get the group entity
+            group = await client.get_entity(group_username)
+            
+            # Get all participants
+            participants = await client.get_participants(group, aggressive=True)
+            
+            # Write to CSV
+            with open(filepath, 'w', encoding='utf-8', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow(['User ID', 'Username', 'First Name', 'Last Name', 'Phone'])
+                for user in participants:
+                    writer.writerow([
+                        user.id,
+                        user.username or '',
+                        user.first_name or '',
+                        user.last_name or '',
+                        user.phone or ''
+                    ])
+            
+            logger.info(f"Scraped {len(participants)} participants to {filepath}")
+            return len(participants), filename
+    finally:
+        # Disconnect client
+        await session_manager.disconnect_client(account.id)

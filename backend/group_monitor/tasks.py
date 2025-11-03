@@ -51,31 +51,57 @@ async def _group_monitor_runner(job: Job, db: Session):
                 error_messages.append(f"Group '{group_username}' not found.")
                 continue
 
-            async for message in client.iter_messages(group, limit=limit):
-                # If a date range was provided, stop once we pass the cutoff
-                if offset_date is not None and message.date and message.date.replace(tzinfo=None) < offset_date:
-                    break
-
+            # When days is specified, iterate through all messages and filter by date
+            # Don't use a hard limit - let the date filter determine how many messages we check
+            actual_limit = None if (days and days > 0) else limit
+            messages_checked = 0
+            matched_count = 0
+            
+            logger.info(f"Starting monitoring for group {group_username}, days={days}, offset_date={offset_date}")
+            
+            async for message in client.iter_messages(group, limit=actual_limit):
+                messages_checked += 1
+                
+                # If we have an offset_date, check if this message is too old
+                if offset_date is not None and message.date:
+                    msg_date = message.date.replace(tzinfo=None)
+                    if msg_date < offset_date:
+                        # Stop iterating once we reach messages older than our cutoff
+                        logger.info(f"Reached messages older than {days} days at message {messages_checked}. Stopping.")
+                        break
+                
                 processed_messages += 1
                 msg_text = message.text or ""
                 sender_username = getattr(message.sender, 'username', None) if message.sender else None
 
-                if (
-                    any(keyword.lower() in msg_text.lower() for keyword in keywords)
-                    or (sender_username in monitored_users if sender_username else False)
-                ):
+                # Check if message matches keywords or is from monitored users
+                matches = False
+                if keywords and any(keyword.lower() in msg_text.lower() for keyword in keywords):
+                    matches = True
+                if monitored_users and sender_username and sender_username in monitored_users:
+                    matches = True
+                
+                if matches:
+                    matched_count += 1
                     writer.writerow({
                         "group": group_username,
-                        "user": sender_username,
+                        "user": sender_username or "Unknown",
                         "text": msg_text,
                         "timestamp": message.date.isoformat() if message.date else ""
                     })
                     f.flush()
 
-                if processed_messages % 10 == 0:
-                    total_expected = max(1, (limit * max(1, len(group_usernames))))
-                    job.progress = min(99, (processed_messages / total_expected) * 100)
+                # Update progress every 50 messages
+                if messages_checked % 50 == 0:
+                    # For time-based queries, we don't know total count, so estimate
+                    if days:
+                        job.progress = min(90, (messages_checked / 1000) * 100)  # Estimate up to 1000 messages per group
+                    else:
+                        total_expected = max(1, (limit * max(1, len(group_usernames))))
+                        job.progress = min(99, (processed_messages / total_expected) * 100)
                     db.commit()
+            
+            logger.info(f"Finished group {group_username}: checked {messages_checked} messages, matched {matched_count}")
 
     f.close()
 

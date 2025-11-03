@@ -12,6 +12,7 @@ import Accounts from './pages/Accounts';
 import ScrapeUsers from './pages/ScrapeUsers';
 import MonitorGroups from './pages/MonitorGroups';
 import MassDM from './pages/MassDM';
+import MassDMDistributed from './pages/MassDMDistributed';
 import AutoPromo from './pages/AutoPromo';
 import Settings from './pages/Settings';
 import Help from './pages/Help';
@@ -40,6 +41,7 @@ const AppRoutes = () => {
         <Route path="/scrape" element={<ScrapeUsers />} />
         <Route path="/monitor" element={<MonitorGroups />} />
         <Route path="/mass-dm" element={<MassDM />} />
+        <Route path="/mass-dm-distributed" element={<MassDMDistributed />} />
         <Route path="/auto-promo" element={<AutoPromo />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/help" element={<Help />} />

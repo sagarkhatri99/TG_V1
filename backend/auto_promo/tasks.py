@@ -56,9 +56,21 @@ async def _auto_promo_runner(job: Job, db: Session):
         except (ValueError, TypeError) as e:
             raise ValueError(f"Target group '{target_group}' not found or invalid. Please check the username or ID.") from e
 
+        last_yield_time = datetime.utcnow()
+        yield_interval_minutes = 30  # Yield for other tasks every 30 minutes
+        
         while True:
             db.refresh(job)
             db.refresh(account)
+            
+            # Check if we should yield to allow other tasks to run
+            current_time = datetime.utcnow()
+            if (current_time - last_yield_time).total_seconds() > (yield_interval_minutes * 60):
+                logger.info(f"Auto promo job {job.id} taking a brief break after {yield_interval_minutes} minutes to allow other tasks")
+                db.commit()  # Save current state
+                await asyncio.sleep(30)  # Brief 30-second break
+                last_yield_time = current_time
+            
             if job.status != 'running' or account.status != 'active':
                 logger.info(f"Auto promo job {job.id} stopped. Job status: {job.status}, Account status: {account.status}")
                 if job.status == 'running':
@@ -96,6 +108,15 @@ async def _auto_promo_runner(job: Job, db: Session):
                 else:
                     job.completion_percentage = min((job.messages_sent / 10) * 100.0, 100.0)  # Fallback calculation
                 job.progress = int(job.completion_percentage)  # Keep existing progress field for compatibility
+                
+                # Auto-complete job when 100% reached
+                if job.completion_percentage >= 100.0:
+                    logger.info(f"Job {job.id} completed (100% reached). Marking as completed.")
+                    job.status = 'completed'
+                    job.completed_at = datetime.utcnow()
+                    db.commit()
+                    break  # Exit the loop
+                
                 db.commit()
 
 
