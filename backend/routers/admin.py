@@ -6,7 +6,7 @@ from typing import List
 from database import get_db
 import models
 from routers.auth import get_current_user
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from core.dependencies import plan_based_dependency
 
 router = APIRouter()
@@ -23,15 +23,14 @@ class UserUpdate(BaseModel):
     subscription_plan: str
 
 class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: int
     email: str
     subscription_plan: str
     created_at: str
     telegram_accounts_count: int = 0
     jobs_count: int = 0
-    
-    class Config:
-        orm_mode = True
 
 @router.get("/stats", response_model=AdminStats)
 def get_admin_stats(

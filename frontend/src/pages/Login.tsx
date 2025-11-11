@@ -18,10 +18,10 @@ const LoginPage: React.FC = () => {
             const response = await fetch('/api/auth/login', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Content-Type': 'application/json',
                 },
-                body: new URLSearchParams({
-                    username: email,
+                body: JSON.stringify({
+                    email: email,
                     password: password,
                 }),
             });
@@ -56,7 +56,7 @@ const LoginPage: React.FC = () => {
                 <Typography component="h1" variant="h5">
                     Sign in
                 </Typography>
-                <Box component="form" onSubmit={handleLogin} sx={{ mt: 1 }}>
+                <Box component="form" onSubmit={handleLogin} sx={{ mt: 1 }} noValidate>
                     <TextField
                         margin="normal"
                         required
@@ -64,10 +64,11 @@ const LoginPage: React.FC = () => {
                         id="email"
                         label="Email Address"
                         name="email"
-                        autoComplete="email"
+                        autoComplete="off"
                         autoFocus
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
+                        inputProps={{ type: 'text' }}
                     />
                     <TextField
                         margin="normal"

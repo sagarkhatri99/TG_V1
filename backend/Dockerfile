@@ -28,15 +28,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application code
 COPY . .
 
-# Fix line endings and make the entrypoint script executable
-RUN sed -i 's/\r$//' /app/entrypoint.sh \
-    && chmod +x /app/entrypoint.sh
+# Make scripts executable
+RUN chmod +x /app/start.py
 
 # Expose port for backend
 EXPOSE 8000
 
-# Set the entrypoint
-ENTRYPOINT ["/bin/bash", "/app/entrypoint.sh"]
-
-# Start the app
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Use Python startup script
+CMD ["python", "/app/start.py"]

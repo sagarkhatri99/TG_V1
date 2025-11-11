@@ -48,7 +48,7 @@ async def verify_and_scrape(
 
         with open(filename, 'w', encoding='utf-8', newline='') as file:
             writer = csv.writer(file)
-            writer.writerow(['User ID', 'Username', 'First Name', 'Last Name'])
+            writer.writerow(['user_id', 'username', 'first_name', 'last_name'])
             for user in participants:
                 writer.writerow([
                     user.id,
@@ -87,7 +87,7 @@ async def scrape_with_existing_account(account: TelegramAccount, group_username:
             # Write to CSV
             with open(filepath, 'w', encoding='utf-8', newline='') as file:
                 writer = csv.writer(file)
-                writer.writerow(['User ID', 'Username', 'First Name', 'Last Name', 'Phone'])
+                writer.writerow(['user_id', 'username', 'first_name', 'last_name', 'phone'])
                 for user in participants:
                     writer.writerow([
                         user.id,

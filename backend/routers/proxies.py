@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import List
 
 from database import get_db
@@ -16,14 +16,13 @@ class ProxyCreate(BaseModel):
     country_code: str = "US"
 
 class ProxyOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    
     id: int
     proxy_url: str
     proxy_type: str
     country_code: str
     status: str
-
-    class Config:
-        orm_mode = True
 
 @router.post("/create", response_model=ProxyOut)
 async def create_proxy(proxy: ProxyCreate, db: Session = Depends(get_db), current_user: User = Depends(plan_based_dependency("proxies"))):

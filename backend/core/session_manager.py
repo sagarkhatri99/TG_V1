@@ -25,12 +25,35 @@ class SessionManager:
     async def get_client(self, account: TelegramAccount) -> TelegramClient:
         """Return a connected TelegramClient using a DB-backed StringSession.
         If client is not cached, create it. Ensure it's connected before returning.
+        
+        CRITICAL: Will raise RuntimeError if session is not authenticated.
         """
         if account.id not in self.active_clients:
             self.active_clients[account.id] = await self._create_client(account)
         client = self.active_clients[account.id]
+        
+        # Check if client is already authenticated (has valid session)
         if not client.is_connected():
-            await client.connect()
+            try:
+                await client.connect()
+            except (EOFError, OSError) as e:
+                # EOFError means Telethon is trying to read from stdin (unauthenticated session)
+                raise RuntimeError(
+                    f"Cannot connect to Telegram for account {account.id}. "
+                    f"The account session is not authenticated. "
+                    f"Please log in first via the frontend. Error: {e}"
+                )
+        
+        # Verify client is authenticated
+        try:
+            if not await client.is_user_authorized():
+                raise RuntimeError(
+                    f"Account {account.id} is not authorized. "
+                    f"Please log in first via the frontend."
+                )
+        except Exception as auth_check_err:
+            logger.warning(f"Could not verify auth status for account {account.id}: {auth_check_err}")
+        
         return client
 
     async def _create_client(self, account: TelegramAccount) -> TelegramClient:
@@ -85,7 +108,12 @@ class SessionManager:
             app_version=self._generate_app_version(),
             lang_code="en",
             system_lang_code="en-US",
+            # CRITICAL: Prevent Telethon from trying to read phone from stdin
+            # This would cause EOFError in background workers
+            loop=None,  # Let Telethon use the current event loop
         )
+        # Mark client to not prompt for auth
+        client._no_warning_tfl_user_newbies = True
         return client
 
     async def disconnect_client(self, account_id: int):

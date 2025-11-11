@@ -82,8 +82,14 @@ def create_test_users():
             existing_user = db.query(User).filter(User.email == user_data["email"]).first()
             
             if existing_user:
-                print(f"✅ User {user_data['email']} already exists with plan: {existing_user.subscription_plan}")
-                created_users.append(existing_user)
+                # Store data before closing session
+                user_dict = {
+                    "email": existing_user.email,
+                    "plan": existing_user.subscription_plan,
+                    "plan_upper": existing_user.subscription_plan.upper()
+                }
+                print(f"✅ User {user_dict['email']} already exists with plan: {user_dict['plan']}")
+                created_users.append(user_dict)
                 continue
             
             # Create new user
@@ -102,7 +108,13 @@ def create_test_users():
             db.commit()
             db.refresh(user)
             
-            created_users.append(user)
+            # Store data before closing session
+            user_dict = {
+                "email": user.email,
+                "plan": user.subscription_plan,
+                "plan_upper": user.subscription_plan.upper()
+            }
+            created_users.append(user_dict)
             print(f"✅ Created user {user.email} with plan: {user.subscription_plan}")
         
         return created_users
@@ -141,8 +153,8 @@ def main():
         print("✅ INITIALIZATION COMPLETED!")
         print("\\n👥 Test Users Created:")
         for user in users:
-            access = "✅ FULL ACCESS" if user.subscription_plan in ['enterprise', 'admin'] else "❌ NO ACCESS"
-            print(f"   📧 {user.email} (password: testpass123) - {user.subscription_plan.upper()} plan - {access}")
+            access = "✅ FULL ACCESS" if user['plan'] in ['enterprise', 'admin'] else "❌ NO ACCESS"
+            print(f"   📧 {user['email']} (password: testpass123) - {user['plan_upper']} plan - {access}")
         
         print("\\n🎯 Access Summary:")
         print("   • Lead Profiles feature: Enterprise/Admin ONLY")

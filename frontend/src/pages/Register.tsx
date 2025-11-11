@@ -49,7 +49,7 @@ const RegisterPage: React.FC = () => {
                 <Typography component="h1" variant="h5">
                     Register
                 </Typography>
-                <Box component="form" onSubmit={handleRegister} sx={{ mt: 1 }}>
+                <Box component="form" onSubmit={handleRegister} sx={{ mt: 1 }} noValidate>
                     <TextField
                         margin="normal"
                         required
@@ -57,10 +57,11 @@ const RegisterPage: React.FC = () => {
                         id="email"
                         label="Email Address"
                         name="email"
-                        autoComplete="email"
+                        autoComplete="off"
                         autoFocus
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
+                        inputProps={{ type: 'text' }}
                     />
                     <TextField
                         margin="normal"

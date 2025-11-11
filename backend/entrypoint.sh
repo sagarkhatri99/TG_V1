@@ -1,47 +1,22 @@
 #!/bin/bash
-set -e
 
-# Wait for database to be ready
-echo "Waiting for database connection..."
-while ! pg_isready -h db -p 5432 -U user; do
-    echo "Database not ready, waiting..."
-    sleep 2
-done
-echo "Database is ready!"
-
-# Wait for Redis to be ready  
-echo "Waiting for Redis connection..."
-while ! redis-cli -h redis ping > /dev/null 2>&1; do
-    echo "Redis not ready, waiting..."
-    sleep 2
-done
-echo "Redis is ready!"
-
-# Run database migrations
-echo "Running database migrations..."
-
-# First check if we need to merge heads
-if ! alembic upgrade head 2>/dev/null; then
-    echo "Migration failed, checking for multiple heads..."
-    HEADS_COUNT=$(alembic heads | wc -l)
-    if [ "$HEADS_COUNT" -gt 1 ]; then
-        echo "Multiple heads detected, running merge script..."
-        python merge_migrations.py
-        echo "Attempting migration again after merge..."
-        alembic upgrade head
-    else
-        echo "Single head detected but migration failed. Exiting."
-        exit 1
+echo "🔄 Checking database connection..."
+for i in {1..30}; do
+    if pg_isready -h db -p 5432 -U user >/dev/null 2>&1; then
+        echo "✅ Database is ready!"
+        break
     fi
-fi
+    echo "Attempt $i/30..."
+    sleep 1
+done
 
-echo "Database migrations completed!"
+echo "Running migrations..."
+alembic upgrade head || true
 
-# Initialize sample data (optional, non-blocking)
-if [ -f "init_docker_data.py" ]; then
-    echo "Initializing sample data..."
-    python init_docker_data.py || echo "Warning: Sample data initialization failed, continuing..."
-fi
+echo "Initializing users..."
+python init_users.py || true
 
-echo "Starting FastAPI application..."
-exec "$@"
+echo "🚀 Starting Uvicorn..."
+echo "About to run uvicorn..." >&2
+PYTHONUNBUFFERED=1 /usr/local/bin/python -u -m uvicorn main:app --host 0.0.0.0 --port 8000
+echo "Uvicorn exited with code: $?" >&2

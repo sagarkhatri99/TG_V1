@@ -1,7 +1,11 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func
 import logging
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from database import get_db
 from routers.accounts import router as accounts_router
@@ -16,45 +20,60 @@ from routers.proxies import router as proxies_router
 from routers.admin import router as admin_router
 from routers.subscriptions import router as subscriptions_router
 from core.session_manager import session_manager
+from core.config import settings
+from core.logging import setup_json_logging, get_logger, set_correlation_id
 
 from models import TelegramAccount, MessageLog, UserInteraction
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Setup structured JSON logging
+setup_json_logging(environment=settings.ENVIRONMENT, log_level="INFO")
+logger = get_logger(__name__)
+
+# Setup rate limiting
+limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(title="TG Tools Backend", version="2.0.0")
+app.state.limiter = limiter
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:5173",
-        "*"
-    ],
+    allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
+
+# Middleware to set correlation ID for request tracing
+@app.middleware("http")
+async def add_correlation_id(request: Request, call_next):
+    await set_correlation_id(request)
+    response = await call_next(request)
+    return response
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    logger.warning(f"Rate limit exceeded for {request.url.path}")
+    return {"detail": "Rate limit exceeded. Please try again later."}, 429
 
 @app.on_event("startup")
 async def startup_event():
-    logger.info("Database setup is handled by Alembic in entrypoint.sh")
+    logger.info("Application startup - JSON logging and rate limiting enabled")
 
 @app.get("/")
 def read_root():
     return {"message": "TG Tools Backend v2.0 is running"}
 
 @app.get("/health")
-def health_check():
+@limiter.limit("100/minute")
+def health_check(request: Request):
     return {"status": "ok", "version": "2.0.0"}
 
 @app.get("/stats")
-def system_stats(db: Session = Depends(get_db)):
+@limiter.limit("30/minute")
+def system_stats(request: Request, db: Session = Depends(get_db)):
     active_accounts = db.query(TelegramAccount).filter(TelegramAccount.status == 'active').count()
     # System-wide sessions (total open clients)
     active_sessions = len(session_manager.active_clients)
-    db.close()
     return {
         "active_sessions": active_sessions,
         "active_accounts": active_accounts,
@@ -68,27 +87,39 @@ def system_stats(db: Session = Depends(get_db)):
     }
 
 @app.get("/api/me/stats")
-def my_stats(current_user = Depends(get_current_user), db: Session = Depends(get_db)):
-    # per-user active accounts
-    active_accounts = db.query(TelegramAccount).filter(TelegramAccount.user_id == current_user.id, TelegramAccount.status == 'active').count()
-    # per-user active sessions (intersection of client's active account ids)
-    user_account_ids = set([row.id for row in db.query(TelegramAccount.id).filter(TelegramAccount.user_id == current_user.id).all()])
+@limiter.limit("30/minute")
+def my_stats(request: Request, current_user = Depends(get_current_user), db: Session = Depends(get_db)):
+    # per-user active accounts - single query with count
+    active_accounts = db.query(func.count(TelegramAccount.id)).filter(
+        TelegramAccount.user_id == current_user.id, 
+        TelegramAccount.status == 'active'
+    ).scalar() or 0
+    # per-user active sessions - single query, cache all account IDs
+    user_account_ids = set([row[0] for row in db.query(TelegramAccount.id).filter(
+        TelegramAccount.user_id == current_user.id
+    ).all()])
     active_sessions = sum(1 for acc_id in session_manager.active_clients.keys() if acc_id in user_account_ids)
-    db.close()
     return {"active_accounts": active_accounts, "active_sessions": active_sessions}
 
 @app.get("/api/accounts/{account_id}/stats")
-def account_stats(account_id: int, db: Session = Depends(get_db)):
+@limiter.limit("30/minute")
+def account_stats(request: Request, account_id: int, db: Session = Depends(get_db)):
     account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found")
 
-    total_messages = db.query(MessageLog).filter(MessageLog.telegram_account_id == account_id).count()
-    successful_messages = db.query(MessageLog).filter(MessageLog.telegram_account_id == account_id, MessageLog.delivery_status == 'sent').count()
-    failed_messages = db.query(MessageLog).filter(MessageLog.telegram_account_id == account_id, MessageLog.delivery_status == 'failed').count()
-    unique_users = db.query(UserInteraction).filter(UserInteraction.telegram_account_id == account_id).count()
+    # Batch all message log queries into single query with GROUP BY
+    message_stats = db.query(
+        func.count(MessageLog.id).label('total'),
+        func.sum(func.cast(MessageLog.delivery_status == 'sent', type_=type(1))).label('successful'),
+        func.sum(func.cast(MessageLog.delivery_status == 'failed', type_=type(1))).label('failed')
+    ).filter(MessageLog.telegram_account_id == account_id).first()
+    
+    total_messages = message_stats.total or 0
+    successful_messages = message_stats.successful or 0
+    failed_messages = message_stats.failed or 0
+    unique_users = db.query(func.count(UserInteraction.id)).filter(UserInteraction.telegram_account_id == account_id).scalar() or 0
     success_rate = (successful_messages / total_messages * 100) if total_messages else 0.0
-    db.close()
     
     return {
         "account_id": account_id,

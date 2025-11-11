@@ -31,7 +31,7 @@ Docker workflow (recommended)
 
 Backend (FastAPI + Celery)
 - Local dependencies (outside Docker):
-  - python -m venv .venv && .venv\Scripts\Activate.ps1
+  - python -m venv .venv && source .venv/bin/activate
   - pip install -r backend/requirements.txt
 - Run API locally (outside Docker; uses DATABASE_URL from env or falls back to SQLite):
   - uvicorn backend.main:app --host 0.0.0.0 --port 8000
@@ -49,10 +49,10 @@ Backend (FastAPI + Celery)
   - docker compose exec backend alembic revision --autogenerate -m "your message"
   - docker compose exec backend alembic upgrade head
 
-Frontend (Vite React + ESLint)
+Frontend (Vite React TypeScript + ESLint)
 - Install deps:
   - cd frontend; npm ci
-- Dev server:
+- Dev server (available at http://localhost:5173):
   - npm run dev
 - Build:
   - npm run build
@@ -60,6 +60,8 @@ Frontend (Vite React + ESLint)
   - npm run preview
 - Lint:
   - npm run lint
+- TypeScript check:
+  - npx tsc -b
 
 Important environment and access notes
 - Backend environment lives in backend/.env. Typical keys (see backend/README.md): DATABASE_URL, OPENAI_API_KEY, REDIS_URL, SECRET_KEY.
@@ -87,7 +89,8 @@ High-level architecture (big picture)
   - Subscription gating examples: account limits in accounts.create; SDR routes enforce enterprise/admin plans
 - Background processing:
   - Celery app (backend/celery_app.py) includes tasks from feature modules (auto_promo, group_monitor, mass_dm_account, mass_dm_bot); Redis is broker/result backend
-  - Worker container started by docker-compose; shares volumes with backend for sessions/uploads/job_results
+  - Multiple worker types: standard workers (3 replicas), long-task workers (2 replicas), short-task workers (2 replicas), plus celery-beat scheduler
+  - Worker containers share volumes with backend for sessions/uploads/job_results
 - Session and Telegram integration:
   - Telethon clients managed via core/session_manager with per-account session files mounted under backend/sessions
   - Actions that require Telegram connectivity (e.g., verification, DM) obtain and cleanly disconnect clients per request

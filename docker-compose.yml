@@ -31,14 +31,14 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 90s
     restart: unless-stopped
     networks:
       - app-network
 
   worker:
     build: ./backend
-    command: ["celery", "-A", "celery_app", "worker", "-l", "info", "--concurrency=12", "--prefetch-multiplier=1"]
+    command: ["celery", "-A", "celery_app", "worker", "-l", "info", "--concurrency=4", "--prefetch-multiplier=1"]
     env_file:
       - ./backend/.env
     depends_on:
@@ -54,11 +54,11 @@ services:
     networks:
       - app-network
     deploy:
-      replicas: 3
+      replicas: 1
 
   worker-long:
     build: ./backend
-    command: ["celery", "-A", "celery_app", "worker", "-Q", "long_tasks", "-l", "info", "--concurrency=10", "--prefetch-multiplier=1"]
+    command: ["celery", "-A", "celery_app", "worker", "-Q", "long_tasks", "-l", "info", "--concurrency=3", "--prefetch-multiplier=1"]
     env_file:
       - ./backend/.env
     depends_on:
@@ -74,11 +74,11 @@ services:
     networks:
       - app-network
     deploy:
-      replicas: 2
+      replicas: 1
 
   worker-short:
     build: ./backend
-    command: ["celery", "-A", "celery_app", "worker", "-Q", "short_tasks", "-l", "info", "--concurrency=15", "--prefetch-multiplier=2"]
+    command: ["celery", "-A", "celery_app", "worker", "-Q", "short_tasks", "-l", "info", "--concurrency=3", "--prefetch-multiplier=1"]
     env_file:
       - ./backend/.env
     depends_on:
@@ -94,7 +94,7 @@ services:
     networks:
       - app-network
     deploy:
-      replicas: 2
+      replicas: 1
 
   celery-beat:
     build: ./backend
@@ -110,6 +110,28 @@ services:
       - ./backend/sessions:/app/sessions
       - ./backend/job_results:/app/job_results
       - ./backend/uploads:/app/uploads
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  flower:
+    build: ./backend
+    command: ["celery", "-A", "celery_app", "flower", "--port=5555", "--broker=redis://redis:6379/0"]
+    env_file:
+      - ./backend/.env
+    ports:
+      - "5555:5555"
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5555/api/workers"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
     networks:
       - app-network

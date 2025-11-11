@@ -1,9 +1,12 @@
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Request
 from sqlalchemy.orm import Session
 from models import Job, TelegramAccount, User
 from database import get_db
 from routers.auth import get_current_user
 from core.dependencies import plan_based_dependency
+from core.logging import get_logger
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 import json
 from pydantic import BaseModel
 from typing import Optional
@@ -15,6 +18,8 @@ from datetime import datetime, timedelta
 import csv
 import io
 
+logger = get_logger(__name__)
+limiter = Limiter(key_func=get_remote_address)
 router = APIRouter()
 
 class MassDMAccountRequest(BaseModel):
@@ -33,7 +38,9 @@ class DistributedMassDMRequest(BaseModel):
     user_description: Optional[str] = None
 
 @router.post("/create-distributed-job")
+@limiter.limit("10/minute")
 async def create_distributed_mass_dm_job(
+    request: Request,
     message: str = Form(...),
     account_ids: str = Form(...),  # JSON string of account IDs
     user_description: Optional[str] = Form(None),
@@ -78,10 +85,15 @@ async def create_distributed_mass_dm_job(
         
         user_ids = []
         for row in csv_reader:
+            # Handle both old (capitalized) and new (lowercase) formats
             if 'user_id' in row and row['user_id']:
                 user_ids.append(row['user_id'].strip())
+            elif 'User ID' in row and row['User ID']:
+                user_ids.append(row['User ID'].strip())
             elif 'username' in row and row['username']:
                 user_ids.append(row['username'].strip())
+            elif 'Username' in row and row['Username']:
+                user_ids.append(row['Username'].strip())
         
         if not user_ids:
             raise HTTPException(status_code=400, detail="CSV file must contain user_id or username column with data")
@@ -153,7 +165,9 @@ async def create_distributed_mass_dm_job(
         raise HTTPException(status_code=500, detail=f"Failed to create distributed jobs: {str(e)}")
 
 @router.post("/create-job")
+@limiter.limit("10/minute")
 async def create_mass_dm_account_job(
+    request: Request,
     account_id: int = Form(...),
     message: str = Form(...),
     user_description: Optional[str] = Form(None),
