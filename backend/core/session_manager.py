@@ -58,15 +58,31 @@ class SessionManager:
 
     async def _create_client(self, account: TelegramAccount) -> TelegramClient:
         """Create a new TelegramClient bound to a StringSession from DB."""
-        # Build proxy tuple if present
+        # Build proxy dictionary if present, with strict error handling.
         proxy_details = None
-        if getattr(account, "proxy", None):
+        if getattr(account, "proxy", None) and account.proxy.proxy_url:
             try:
                 from urllib.parse import urlparse
                 parsed_url = urlparse(account.proxy.proxy_url)
-                proxy_details = (parsed_url.scheme, parsed_url.hostname, parsed_url.port)
+
+                if not parsed_url.scheme or not parsed_url.hostname or not parsed_url.port:
+                    raise ValueError("Proxy URL must include scheme, hostname, and port.")
+
+                # Telethon expects a dict for socks/http proxy
+                proxy_details = {
+                    "proxy_type": parsed_url.scheme,
+                    "addr": parsed_url.hostname,
+                    "port": parsed_url.port,
+                    "username": parsed_url.username,
+                    "password": parsed_url.password,
+                }
             except Exception as e:
-                logger.error(f"Failed to parse proxy URL {account.proxy.proxy_url}: {e}")
+                # If a proxy is assigned but invalid, we must raise an error to prevent
+                # the account from connecting without its designated IP.
+                error_msg = f"Account {account.id} has an invalid proxy URL assigned: '{account.proxy.proxy_url}'. Connection aborted. Error: {e}"
+                logger.error(error_msg)
+                # This error will be caught by the job runner and stored in the job's error message.
+                raise ValueError(error_msg)
 
         # Prefer per-account API keys; fallback to env
         try:

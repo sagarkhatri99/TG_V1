@@ -58,7 +58,7 @@ services:
 
   worker-long:
     build: ./backend
-    command: ["celery", "-A", "celery_app", "worker", "-Q", "long_tasks", "-l", "info", "--concurrency=3", "--prefetch-multiplier=1"]
+    command: ["celery", "-A", "celery_app", "worker", "-Q", "long_tasks", "-l", "info", "--concurrency=1", "--prefetch-multiplier=1"]
     env_file:
       - ./backend/.env
     depends_on:
@@ -138,6 +138,7 @@ services:
 
   db:
     image: postgres:13
+    command: ["postgres", "-c", "max_connections=200"]
     volumes:
       - postgres_data:/var/lib/postgresql/data/
     environment:
