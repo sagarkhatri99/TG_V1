@@ -117,6 +117,8 @@ services:
   flower:
     build: ./backend
     command: ["celery", "-A", "celery_app", "flower", "--port=5555", "--broker=redis://redis:6379/0"]
+    environment:
+      - FLOWER_UNAUTHENTICATED_API=true
     env_file:
       - ./backend/.env
     ports:
