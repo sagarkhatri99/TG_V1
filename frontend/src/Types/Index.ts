@@ -1,6 +1,11 @@
 export interface Proxy {
   id: number;
   proxy_url: string;
+  proxy_type: string;
+  country_code: string;
+  status: string;
+  ip_address?: string;
+  response_time?: number;
 }
 
 export interface TelegramAccount {

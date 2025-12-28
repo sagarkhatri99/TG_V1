@@ -45,12 +45,13 @@ class Proxy(Base):
     __tablename__ = "proxies"
     
     id = Column(Integer, primary_key=True, index=True)
-    proxy_url = Column(String(255))
+    proxy_url = Column(String(500))  # Increased length for long IPRoyal parameterized URLs
     proxy_type = Column(String(10))
     country_code = Column(String(2))
     status = Column(String(20), default="active")
-    response_time = Column(Integer)
-    last_check = Column(DateTime)
+    response_time = Column(Integer, nullable=True)  # Only set after testing
+    last_check = Column(DateTime, nullable=True)  # Only set after testing
+    ip_address = Column(String(45), nullable=True)  # Store detected IP (supports IPv6)
 
 class UserInteraction(Base):
     __tablename__ = "user_interactions"
@@ -103,6 +104,3 @@ class MessageLog(Base):
     ai_relevance_score = Column(Float)
     delivery_status = Column(String(20))
     timestamp = Column(DateTime, default=datetime.utcnow)
-
-
-

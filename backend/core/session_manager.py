@@ -8,8 +8,9 @@ import os
 from datetime import datetime
 
 from database import SessionLocal
-from models import TelegramAccount
+from models import TelegramAccount, Proxy
 from core.config import settings
+from core.proxy_utils import build_proxy_config
 
 logger = logging.getLogger(__name__)
 
@@ -59,29 +60,30 @@ class SessionManager:
     async def _create_client(self, account: TelegramAccount) -> TelegramClient:
         """Create a new TelegramClient bound to a StringSession from DB."""
         # Build proxy dictionary if present, with strict error handling.
-        proxy_details = None
-        if getattr(account, "proxy", None) and account.proxy.proxy_url:
+        # Build proxy dictionary if present, with strict error handling.
+        # 1. Try to get proxy object
+        proxy_obj = None
+        if getattr(account, "proxy", None):
+            proxy_obj = account.proxy
+        elif getattr(account, "proxy_id", None):
             try:
-                from urllib.parse import urlparse
-                parsed_url = urlparse(account.proxy.proxy_url)
-
-                if not parsed_url.scheme or not parsed_url.hostname or not parsed_url.port:
-                    raise ValueError("Proxy URL must include scheme, hostname, and port.")
-
-                # Telethon expects a dict for socks/http proxy
-                proxy_details = {
-                    "proxy_type": parsed_url.scheme,
-                    "addr": parsed_url.hostname,
-                    "port": parsed_url.port,
-                    "username": parsed_url.username,
-                    "password": parsed_url.password,
-                }
+                with SessionLocal() as db:
+                     proxy_obj = db.query(Proxy).filter(Proxy.id == account.proxy_id).first()
             except Exception as e:
-                # If a proxy is assigned but invalid, we must raise an error to prevent
-                # the account from connecting without its designated IP.
-                error_msg = f"Account {account.id} has an invalid proxy URL assigned: '{account.proxy.proxy_url}'. Connection aborted. Error: {e}"
+                logger.error(f"Failed to fetch proxy for account {account.id} from DB: {e}")
+
+        if proxy_obj:
+            try:
+                # Use unified builder
+                proxy_config = build_proxy_config(proxy_obj)
+                proxy_details = proxy_config.get("telethon")
+                
+                # Log consistent proxy info with masked credentials
+                logger.info(f"Using proxy for account {account.id}: {proxy_config.get('details')}")
+                
+            except Exception as e:
+                error_msg = f"Account {account.id} has an invalid proxy assigned. Connection aborted. Error: {e}"
                 logger.error(error_msg)
-                # This error will be caught by the job runner and stored in the job's error message.
                 raise ValueError(error_msg)
 
         # Prefer per-account API keys; fallback to env

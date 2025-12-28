@@ -33,15 +33,11 @@ import {
   Pause as PauseIcon,
   Science as TestIcon,
   Delete as DeleteIcon,
+  Edit as EditIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import api, { endpoints } from '../api/Index';
-import type { TelegramAccount, CreateAccountRequest } from '../Types/Index';
-
-interface Proxy {
-  id: number;
-  proxy_url: string;
-}
+import type { TelegramAccount, CreateAccountRequest, Proxy } from '../Types/Index';
 
 export default function Accounts() {
   const [accounts, setAccounts] = useState<TelegramAccount[]>([]);
@@ -49,10 +45,12 @@ export default function Accounts() {
   const [loading, setLoading] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [verifyDialogOpen, setVerifyDialogOpen] = useState(false);
+  const [editProxyDialogOpen, setEditProxyDialogOpen] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState<TelegramAccount | null>(null);
+  const [selectedProxyId, setSelectedProxyId] = useState<number | ''>('');
   const [alert, setAlert] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   const [loadingActions, setLoadingActions] = useState<{ [key: number]: string }>({});
-  
+
   const [createForm, setCreateForm] = useState<CreateAccountRequest & { proxy_id?: number | '' }>({
     api_id: 0,
     api_hash: '',
@@ -105,23 +103,23 @@ export default function Accounts() {
 
       setAlert({ type: 'success', message: 'Account created. Please verify with OTP.' });
       setCreateDialogOpen(false);
-      
+
       // Send verification code
       await api.post(endpoints.accounts.sendCode(response.data.account_id));
-      
+
       // Show verify dialog
-      setSelectedAccount({ 
-        ...createForm, 
-        id: response.data.account_id, 
-        status: 'pending_verification', 
-        trust_score: 0, 
-        risk_score: 0, 
-        last_activity: '', 
-        daily_message_count: 0, 
-        created_at: new Date().toISOString() 
+      setSelectedAccount({
+        ...createForm,
+        id: response.data.account_id,
+        status: 'pending_verification',
+        trust_score: 0,
+        risk_score: 0,
+        last_activity: '',
+        daily_message_count: 0,
+        created_at: new Date().toISOString()
       });
       setVerifyDialogOpen(true);
-      
+
       fetchAccounts();
     } catch (error: any) {
       setAlert({ type: 'error', message: error.response?.data?.detail || 'Failed to create account' });
@@ -156,35 +154,35 @@ export default function Accounts() {
   const handlePauseResume = async (account: TelegramAccount) => {
     const actionType = account.status === 'active' ? 'pause' : 'resume';
     setLoadingActions(prev => ({ ...prev, [account.id]: actionType }));
-    
+
     try {
-      const endpoint = account.status === 'active' 
+      const endpoint = account.status === 'active'
         ? endpoints.accounts.pause(account.id)
         : endpoints.accounts.resume(account.id);
-      
+
       const response = await api.post(endpoint);
-      
+
       if (actionType === 'resume') {
         // Handle resume with connection test results
         const data = response.data;
         if (data.connection_test === 'passed') {
-          setAlert({ 
-            type: 'success', 
-            message: `Account resumed successfully. Connection test passed. User: ${data.user_info?.first_name || 'Unknown'}` 
+          setAlert({
+            type: 'success',
+            message: `Account resumed successfully. Connection test passed. User: ${data.user_info?.first_name || 'Unknown'}`
           });
         } else {
-          setAlert({ 
-            type: 'error', 
-            message: 'Account resume failed: Connection test failed' 
+          setAlert({
+            type: 'error',
+            message: 'Account resume failed: Connection test failed'
           });
         }
       } else {
-        setAlert({ 
-          type: 'success', 
-          message: `Account paused successfully` 
+        setAlert({
+          type: 'success',
+          message: `Account paused successfully`
         });
       }
-      
+
       fetchAccounts();
     } catch (error: any) {
       const message = error?.response?.data?.detail || 'Operation failed';
@@ -201,12 +199,12 @@ export default function Accounts() {
 
   const handleTestConnection = async (account: TelegramAccount) => {
     setLoadingActions(prev => ({ ...prev, [account.id]: 'test' }));
-    
+
     try {
       const response = await api.post(endpoints.accounts.test(account.id));
-      setAlert({ 
-        type: 'success', 
-        message: `Connection test successful. User: ${response.data.first_name || response.data.username || 'Unknown'}` 
+      setAlert({
+        type: 'success',
+        message: `Connection test successful. User: ${response.data.first_name || response.data.username || 'Unknown'}`
       });
       fetchAccounts();
     } catch (error: any) {
@@ -229,15 +227,42 @@ export default function Accounts() {
 
     try {
       await api.delete(endpoints.accounts.delete(account.id));
-      setAlert({ 
-        type: 'success', 
-        message: `Account "${account.nickname}" deleted successfully` 
+      setAlert({
+        type: 'success',
+        message: `Account "${account.nickname}" deleted successfully`
       });
       fetchAccounts();
     } catch (error: any) {
-      setAlert({ 
-        type: 'error', 
-        message: error.response?.data?.detail || 'Failed to delete account' 
+      setAlert({
+        type: 'error',
+        message: error.response?.data?.detail || 'Failed to delete account'
+      });
+    }
+  };
+
+  const handleOpenEditProxy = (account: TelegramAccount) => {
+    setSelectedAccount(account);
+    setSelectedProxyId(account.proxy?.id || '');
+    setEditProxyDialogOpen(true);
+  };
+
+  const handleUpdateProxy = async () => {
+    if (!selectedAccount) return;
+
+    try {
+      await api.patch(`/api/accounts/${selectedAccount.id}`, {
+        proxy_id: selectedProxyId === '' ? null : selectedProxyId
+      });
+      setAlert({
+        type: 'success',
+        message: 'Proxy updated successfully!'
+      });
+      setEditProxyDialogOpen(false);
+      fetchAccounts();
+    } catch (error: any) {
+      setAlert({
+        type: 'error',
+        message: error.response?.data?.detail || 'Failed to update proxy'
       });
     }
   };
@@ -285,8 +310,8 @@ export default function Accounts() {
 
 
       {alert && (
-        <Alert 
-          severity={alert.type} 
+        <Alert
+          severity={alert.type}
           onClose={() => setAlert(null)}
           sx={{ mb: 2 }}
         >
@@ -323,15 +348,30 @@ export default function Accounts() {
                     </TableCell>
                     <TableCell>{account.phone_number}</TableCell>
                     <TableCell>
-                      <Chip 
+                      <Chip
                         label={account.status}
                         color={getStatusColor(account.status)}
                         size="small"
                       />
                     </TableCell>
-                    <TableCell>{account.proxy?.proxy_url || 'None'}</TableCell>
                     <TableCell>
-                      <Chip 
+                      {account.proxy ? (
+                        <Box>
+                          <Typography variant="body2" sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {account.proxy.proxy_url}
+                          </Typography>
+                          {account.proxy.ip_address && (
+                            <Typography variant="caption" color="text.secondary" fontFamily="monospace">
+                              IP: {account.proxy.ip_address}
+                            </Typography>
+                          )}
+                        </Box>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">None</Typography>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Chip
                         label={account.trust_score}
                         color="primary"
                         variant="outlined"
@@ -339,7 +379,7 @@ export default function Accounts() {
                       />
                     </TableCell>
                     <TableCell>
-                      <Chip 
+                      <Chip
                         label={account.risk_score.toFixed(2)}
                         color={getRiskColor(account.risk_score)}
                         variant="outlined"
@@ -348,16 +388,16 @@ export default function Accounts() {
                     </TableCell>
                     <TableCell>{account.daily_message_count}</TableCell>
                     <TableCell>
-                      {account.last_activity ? 
-                        format(new Date(account.last_activity), 'MMM dd, HH:mm') : 
+                      {account.last_activity ?
+                        format(new Date(account.last_activity), 'MMM dd, HH:mm') :
                         'Never'
                       }
                     </TableCell>
                     <TableCell>
                       <Box display="flex" gap={1}>
                         <Tooltip title="Test Connection">
-                          <IconButton 
-                            size="small" 
+                          <IconButton
+                            size="small"
                             onClick={() => handleTestConnection(account)}
                             disabled={account.status !== 'active' || loadingActions[account.id] === 'test'}
                           >
@@ -365,20 +405,29 @@ export default function Accounts() {
                           </IconButton>
                         </Tooltip>
                         <Tooltip title={account.status === 'active' ? 'Pause' : 'Resume'}>
-                          <IconButton 
-                            size="small" 
+                          <IconButton
+                            size="small"
                             onClick={() => handlePauseResume(account)}
                             disabled={account.status === 'pending_verification' || loadingActions[account.id] === 'pause' || loadingActions[account.id] === 'resume'}
                           >
-                            {(loadingActions[account.id] === 'pause' || loadingActions[account.id] === 'resume') ? 
-                              <CircularProgress size={16} /> : 
+                            {(loadingActions[account.id] === 'pause' || loadingActions[account.id] === 'resume') ?
+                              <CircularProgress size={16} /> :
                               (account.status === 'active' ? <PauseIcon /> : <PlayIcon />)
                             }
                           </IconButton>
                         </Tooltip>
+                        <Tooltip title="Edit Proxy">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleOpenEditProxy(account)}
+                            disabled={!!loadingActions[account.id]}
+                          >
+                            <EditIcon />
+                          </IconButton>
+                        </Tooltip>
                         <Tooltip title="Delete Account">
-                          <IconButton 
-                            size="small" 
+                          <IconButton
+                            size="small"
                             onClick={() => handleDeleteAccount(account)}
                             color="error"
                             disabled={!!loadingActions[account.id]}
@@ -485,6 +534,38 @@ export default function Accounts() {
         <DialogActions>
           <Button onClick={() => setVerifyDialogOpen(false)}>Cancel</Button>
           <Button onClick={handleVerifyAccount} variant="contained">Verify</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Edit Proxy Dialog */}
+      <Dialog open={editProxyDialogOpen} onClose={() => setEditProxyDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit Proxy for {selectedAccount?.nickname}</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <FormControl fullWidth>
+              <InputLabel id="edit-proxy-select-label">Proxy</InputLabel>
+              <Select
+                labelId="edit-proxy-select-label"
+                value={selectedProxyId}
+                label="Proxy"
+                onChange={(e) => setSelectedProxyId(e.target.value as number | '')}
+              >
+                <MenuItem value="">
+                  <em>None (Remove Proxy)</em>
+                </MenuItem>
+                {proxies.map((proxy) => (
+                  <MenuItem key={proxy.id} value={proxy.id}>
+                    {proxy.proxy_url}
+                    {proxy.ip_address && ` (IP: ${proxy.ip_address})`}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditProxyDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleUpdateProxy} variant="contained">Update Proxy</Button>
         </DialogActions>
       </Dialog>
     </Box>
