@@ -1,125 +1,163 @@
 import asyncio
-import random
-from datetime import datetime, timedelta
-from typing import Dict
+import time
+from typing import Optional
 import logging
 
 logger = logging.getLogger(__name__)
 
-class AdvancedRateLimiter:
-    def __init__(self):
-        # Track rate limits per account
-        self.account_limits: Dict[int, dict] = {}
-        # Global rate limits
-        self.global_message_count = 0
-        self.global_reset_time = datetime.utcnow() + timedelta(seconds=60)
+class AccountRateLimiter:
+    """
+    Per-account rate limiter: 1 Telegram API call per second per account.
+    Multiple accounts can run simultaneously without interfering.
+    Uses Redis for distributed rate limiting across workers.
+    """
+    def __init__(self, redis_url: str = "redis://redis:6379/0"):
+        self.redis_url = redis_url
+        self._redis = None
+        self.redis_available = True
+        self.local_cache = {}  # Fallback when Redis is down
+        
+    async def _get_redis(self):
+        """Lazy initialization of Redis connection with fallback"""
+        if not self.redis_available:
+            return None
+            
+        if self._redis is None:
+            try:
+                import redis.asyncio as redis
+                self._redis = redis.from_url(self.redis_url, decode_responses=True)
+                # Test connection
+                await self._redis.ping()
+                self.redis_available = True
+                logger.info(f"Redis connection established for rate limiter: {self.redis_url}")
+            except ImportError:
+                logger.error("redis package not installed. Install with: pip install redis")
+                self.redis_available = False
+                return None
+            except Exception as e:
+                logger.error(f"Failed to connect to Redis at {self.redis_url}: {e}")
+                logger.warning("Falling back to local in-memory rate limiting (less reliable in multi-worker setup)")
+                self.redis_available = False
+                return None
+        return self._redis
+        
+    async def acquire(self, account_id: int, timeout: float = 5.0) -> bool:
+        """
+        Acquire permission for account to make Telegram API call.
+        Blocks until 1 second has passed since last call for THIS account.
+        Falls back to local cache if Redis is unavailable.
+        
+        Args:
+            account_id: Unique account identifier
+            timeout: Maximum seconds to wait for rate limit
+            
+        Returns:
+            True if acquired, raises TimeoutError if timeout exceeded
+        """
+        redis = await self._get_redis()
+        
+        if redis and self.redis_available:
+            try:
+                return await self._acquire_redis(account_id, timeout, redis)
+            except Exception as e:
+                logger.warning(f"Redis error during acquire: {e}. Falling back to local.")
+                self.redis_available = False
+        
+        # Local fallback (less reliable in multi-worker setup)
+        return await self._acquire_local(account_id, timeout)
     
-    async def can_send_message(self, account_id: int, target_type: str = "user") -> bool:
-        """Check if account can send a message"""
-        account_data = self.account_limits.get(account_id, {
-            'messages_today': 0,
-            'last_message': None,
-            'consecutive_messages': 0,
-            'last_reset': datetime.utcnow().date()
-        })
+    async def _acquire_redis(self, account_id: int, timeout: float, redis) -> bool:
+        """Acquire using Redis (distributed rate limiting)"""
+        key = f"rate:account:{account_id}"
+        start_time = time.time()
         
-        # Reset daily counters
-        if account_data['last_reset'] != datetime.utcnow().date():
-            account_data['messages_today'] = 0
-            account_data['consecutive_messages'] = 0
-            account_data['last_reset'] = datetime.utcnow().date()
-        
-        # Check daily limits
-        daily_limit = self._get_daily_limit(target_type)
-        if account_data['messages_today'] >= daily_limit:
-            return False
-        
-        # Check global rate limit
-        if self.global_message_count >= 30:  # 30 messages per minute globally
-            if datetime.utcnow() < self.global_reset_time:
-                return False
-            else:
-                self.global_message_count = 0
-                self.global_reset_time = datetime.utcnow() + timedelta(seconds=60)
-        
-        return True
+        while True:
+            current_time = time.time()
+            
+            # Get last API call timestamp for this account
+            last_call = await redis.get(key)
+            
+            if last_call is None:
+                # First API call for this account
+                await redis.setex(key, 10, str(current_time))
+                logger.debug(f"Account {account_id}: First API call granted (Redis)")
+                return True
+            
+            # Calculate time since last call
+            elapsed = current_time - float(last_call)
+            
+            if elapsed >= 1.0:
+                # 1 second passed, grant permission
+                await redis.setex(key, 10, str(current_time))
+                logger.debug(f"Account {account_id}: API call granted (Redis, waited {elapsed:.2f}s)")
+                return True
+            
+            # Check if timeout exceeded
+            if time.time() - start_time >= timeout:
+                logger.error(f"Account {account_id}: Rate limit timeout after {timeout}s")
+                raise TimeoutError(
+                    f"Rate limit timeout for account {account_id}. "
+                    f"Waited {timeout}s, needed {1.0 - elapsed:.2f}s more."
+                )
+            
+            # Wait for remaining time (with small buffer)
+            wait_time = max(0.01, 1.0 - elapsed)
+            logger.debug(f"Account {account_id}: Waiting {wait_time:.2f}s for rate limit")
+            await asyncio.sleep(wait_time)
     
-    async def calculate_delay(self, account_id: int, target_type: str = "user", trust_score: int = 50) -> float:
-        """Calculate intelligent delay between messages (8-200 seconds as requested)"""
+    async def _acquire_local(self, account_id: int, timeout: float) -> bool:
+        """
+        Fallback: In-memory rate limiting when Redis is down.
+        WARNING: Not reliable in multi-worker setups!
+        """
+        logger.warning(f"Account {account_id}: Using local fallback rate limiting")
+        start_time = time.time()
         
-        # Get account data
-        account_data = self.account_limits.get(account_id, {})
-        
-        # Base delay range (as requested: 8-200 seconds)
-        min_delay = 8
-        max_delay = 200
-        
-        # Calculate base delay
-        base_delay = random.uniform(min_delay, max_delay)
-        
-        # Apply multipliers based on risk factors
-        risk_multiplier = 1.0
-        
-        # Account trust score impact
-        if trust_score < 30:
-            risk_multiplier += 0.5  # 50% longer delays for low trust
-        elif trust_score > 80:
-            risk_multiplier -= 0.2  # 20% shorter delays for high trust
-        
-        # Recent activity impact
-        if account_data.get('consecutive_messages', 0) > 5:
-            risk_multiplier += 0.3  # Longer delays after many consecutive messages
-        
-        # Target type impact
-        if target_type == "group":
-            risk_multiplier += 0.2  # Groups are riskier
-        
-        # Time of day impact (avoid peak hours)
-        current_hour = datetime.utcnow().hour
-        if 9 <= current_hour <= 17:  # Peak hours
-            risk_multiplier += 0.15
-        
-        # Calculate final delay
-        final_delay = base_delay * risk_multiplier
-        
-        # Ensure within bounds but allow extension for safety
-        final_delay = max(min_delay, min(final_delay, max_delay * 2))
-        
-        return final_delay
+        while True:
+            current_time = time.time()
+            
+            # Get last API call timestamp from local cache
+            last_call = self.local_cache.get(account_id)
+            
+            if last_call is None:
+                # First API call for this account
+                self.local_cache[account_id] = current_time
+                logger.debug(f"Account {account_id}: First API call granted (local)")
+                return True
+            
+            # Calculate time since last call
+            elapsed = current_time - last_call
+            
+            if elapsed >= 1.0:
+                # 1 second passed, grant permission
+                self.local_cache[account_id] = current_time
+                logger.debug(f"Account {account_id}: API call granted (local, waited {elapsed:.2f}s)")
+                return True
+            
+            # Check if timeout exceeded
+            if time.time() - start_time >= timeout:
+                logger.error(f"Account {account_id}: Rate limit timeout after {timeout}s (local)")
+                raise TimeoutError(
+                    f"Rate limit timeout for account {account_id}. "
+                    f"Waited {timeout}s, needed {1.0 - elapsed:.2f}s more."
+                )
+            
+            # Wait for remaining time
+            wait_time = max(0.01, 1.0 - elapsed)
+            await asyncio.sleep(wait_time)
     
-    async def record_message_sent(self, account_id: int, target_type: str = "user"):
-        """Record that a message was sent"""
-        if account_id not in self.account_limits:
-            self.account_limits[account_id] = {
-                'messages_today': 0,
-                'last_message': None,
-                'consecutive_messages': 0,
-                'last_reset': datetime.utcnow().date()
-            }
-        
-        account_data = self.account_limits[account_id]
-        account_data['messages_today'] += 1
-        account_data['last_message'] = datetime.utcnow()
-        account_data['consecutive_messages'] += 1
-        
-        # Global counter
-        self.global_message_count += 1
-        
-        logger.info(f"Account {account_id}: Sent message #{account_data['messages_today']} today")
-    
-    def _get_daily_limit(self, target_type: str) -> int:
-        """Get daily message limit based on target type"""
-        limits = {
-            'user': 50,     # DMs per day
-            'group': 100,   # Group messages per day
-            'channel': 20   # Channel messages per day
-        }
-        return limits.get(target_type, 50)
-    
-    async def reset_consecutive_count(self, account_id: int):
-        """Reset consecutive message count (call after long pause)"""
-        if account_id in self.account_limits:
-            self.account_limits[account_id]['consecutive_messages'] = 0
+    async def close(self):
+        """Close Redis connection"""
+        if self._redis:
+            await self._redis.close()
+            self._redis = None
 
-# Global rate limiter instance
-rate_limiter = AdvancedRateLimiter()
+# Global instance
+_rate_limiter: Optional[AccountRateLimiter] = None
+
+def get_rate_limiter(redis_url: str = "redis://redis:6379/0") -> AccountRateLimiter:
+    """Get or create global rate limiter instance"""
+    global _rate_limiter
+    if _rate_limiter is None:
+        _rate_limiter = AccountRateLimiter(redis_url)
+    return _rate_limiter

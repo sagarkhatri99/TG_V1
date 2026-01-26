@@ -17,14 +17,15 @@ import {
 } from '@mui/material';
 import { Campaign as CampaignIcon, Upload as UploadIcon } from '@mui/icons-material';
 import api, { endpoints } from '../api/Index';
-import type { TelegramAccount } from '../Types/Index';
+import type { TelegramAccount, MessageTemplate } from '../Types/Index';
+import { TemplateSelector } from '../components/shared/TemplateSelector';
 
 export default function AutoPromo() {
   const [loading, setLoading] = useState(false);
   const [alert, setAlert] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   const [accounts, setAccounts] = useState<TelegramAccount[]>([]);
   const [imageFile, setImageFile] = useState<File | null>(null);
-  
+
   const [formData, setFormData] = useState({
     account_id: '',
     target_group: '',
@@ -37,6 +38,8 @@ export default function AutoPromo() {
     stop_after_hours: '',
     rate_limit_per_hour: '20',
   });
+
+  const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
 
   useEffect(() => {
     const fetchAccounts = async () => {
@@ -69,10 +72,10 @@ export default function AutoPromo() {
     }
     apiFormData.append('use_random_interval', String(formData.use_random_interval));
     if (formData.use_random_interval) {
-        apiFormData.append('min_interval', formData.min_interval);
-        apiFormData.append('max_interval', formData.max_interval);
+      apiFormData.append('min_interval', formData.min_interval);
+      apiFormData.append('max_interval', formData.max_interval);
     } else {
-        apiFormData.append('interval_seconds', formData.interval_seconds);
+      apiFormData.append('interval_seconds', formData.interval_seconds);
     }
     if (formData.stop_after_hours) {
       apiFormData.append('stop_after_hours', formData.stop_after_hours);
@@ -143,6 +146,16 @@ export default function AutoPromo() {
                 sx={{ mb: 2 }}
               />
             </Box>
+            <TemplateSelector
+              value={selectedTemplateId}
+              onChange={(template: MessageTemplate | null) => {
+                setSelectedTemplateId(template?.id || null);
+                if (template) {
+                  setFormData({ ...formData, promo_message: template.content });
+                }
+              }}
+            />
+
             <Box>
               <TextField
                 fullWidth
@@ -216,12 +229,12 @@ export default function AutoPromo() {
             )}
 
             <TextField
-                fullWidth
-                label="Rate Limit (msg/hr)"
-                type="number"
-                placeholder="e.g., 20"
-                value={formData.rate_limit_per_hour}
-                onChange={(e) => setFormData({ ...formData, rate_limit_per_hour: e.target.value })}
+              fullWidth
+              label="Rate Limit (msg/hr)"
+              type="number"
+              placeholder="e.g., 20"
+              value={formData.rate_limit_per_hour}
+              onChange={(e) => setFormData({ ...formData, rate_limit_per_hour: e.target.value })}
             />
 
             <Box>

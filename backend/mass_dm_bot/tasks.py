@@ -2,6 +2,7 @@ from celery_app import celery_app
 from sqlalchemy.orm import Session
 from models import Job
 from database import SessionLocal
+from core.human_aware_task import HumanAwareTask
 from telegram import Bot
 from telegram.error import TelegramError, BadRequest, Forbidden
 import pandas as pd
@@ -106,7 +107,7 @@ async def _mass_dm_bot_runner(job: Job, db: Session):
     if error_messages:
         raise MassDMBotError(f"Job completed with {len(error_messages)} errors.", error_messages)
 
-@celery_app.task(bind=True, max_retries=3)
+@celery_app.task(base=HumanAwareTask, bind=True, max_retries=3)
 def mass_dm_bot_task(self, job_id: int):
     db: Session = SessionLocal()
     job = db.query(Job).filter(Job.id == job_id).first()

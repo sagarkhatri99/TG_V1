@@ -17,7 +17,7 @@ import {
   Paper,
   Divider,
 } from '@mui/material';
-import { Send as SendIcon, Upload as UploadIcon, Speed } from '@mui/icons-material';
+import { Send as SendIcon, Upload as UploadIcon, Speed, Info as InfoIcon } from '@mui/icons-material';
 import api from '../api/Index';
 import type { TelegramAccount } from '../Types/Index';
 
@@ -28,7 +28,7 @@ export default function MassDMDistributed() {
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [csvPreview, setCsvPreview] = useState<{ total_lines: number; sample: string[] } | null>(null);
-  
+
   const [formData, setFormData] = useState({
     message: '',
     user_description: '',
@@ -77,6 +77,26 @@ export default function MassDMDistributed() {
   const handleAccountChange = (event: any) => {
     const value = event.target.value;
     setFormData({ ...formData, account_ids: typeof value === 'string' ? value.split(',').map(Number) : value });
+  };
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const response = await api.get('/api/jobs/mass-dm-template/download', {
+        responseType: 'blob',
+      });
+
+      const blob = new Blob([response.data], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'mass_dm_template.csv';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      setAlert({ type: 'error', message: 'Failed to download template' });
+    }
   };
 
   const handleCreateJob = async () => {
@@ -223,11 +243,35 @@ export default function MassDMDistributed() {
                   onChange={(e) => setFormData({ ...formData, user_description: e.target.value })}
                 />
 
-                <Button variant="outlined" component="label" startIcon={<UploadIcon />}>
-                  Upload User CSV
-                  <input type="file" hidden accept=".csv" onChange={(e) => handleFileChange(e, 'csv')} />
-                </Button>
-                {csvFile && <Typography variant="body2">✅ CSV: {csvFile.name}</Typography>}
+                <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <Button variant="outlined" component="label" startIcon={<UploadIcon />}>
+                    Upload User CSV
+                    <input type="file" hidden accept=".csv" onChange={(e) => handleFileChange(e, 'csv')} />
+                  </Button>
+
+                  <Button
+                    variant="text"
+                    size="small"
+                    startIcon={<InfoIcon />}
+                    onClick={handleDownloadTemplate}
+                  >
+                    Download Template
+                  </Button>
+                </Box>
+
+                {csvFile && <Typography variant="body2" color="success.main">✅ CSV: {csvFile.name}</Typography>}
+
+                <Alert severity="info" icon={<InfoIcon />} sx={{ mt: 1 }}>
+                  <Typography variant="body2">
+                    <strong>CSV Format Guidelines:</strong>
+                  </Typography>
+                  <Typography variant="caption" component="div">
+                    • Required: <code>user_id</code> OR <code>username</code> column<br />
+                    • <strong>Recommended</strong>: Use <code>user_id</code> (numeric) - more reliable than usernames<br />
+                    • Optional: <code>first_name</code>, <code>notes</code> for your reference<br />
+                    • If both columns present, <code>user_id</code> takes priority
+                  </Typography>
+                </Alert>
 
                 <Button variant="outlined" component="label" startIcon={<UploadIcon />}>
                   Upload Image (Optional)

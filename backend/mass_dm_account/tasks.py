@@ -468,7 +468,9 @@ async def _mass_dm_runner(job: Job, db: Session):
         )
 
 
-@celery_app.task(bind=True, max_retries=3)
+from core.human_aware_task import HumanAwareTask
+
+@celery_app.task(base=HumanAwareTask, bind=True, max_retries=3)
 def mass_dm_account_task(self, job_id: int):
     """
     Main Celery task for mass DM operations.

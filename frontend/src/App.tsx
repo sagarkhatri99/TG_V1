@@ -8,6 +8,7 @@ import ProtectedRoute from './components/auth/ProtectedRoute';
 import LoginPage from './pages/Login';
 import RegisterPage from './pages/Register';
 import Dashboard from './pages/Dashboard';
+import HealthDashboard from './pages/HealthDashboard';
 import Accounts from './pages/Accounts';
 import ScrapeUsers from './pages/ScrapeUsers';
 import MonitorGroups from './pages/MonitorGroups';
@@ -19,6 +20,10 @@ import Help from './pages/Help';
 import Jobs from './pages/Jobs';
 import Proxies from './pages/Proxies';
 import AdminDashboard from './pages/AdminDashboard';
+import CampaignDashboard from './pages/CampaignDashboard';
+import CampaignDetail from './pages/CampaignDetail';
+import Templates from './pages/Templates';
+import { Toaster } from 'react-hot-toast';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -37,6 +42,7 @@ const AppRoutes = () => {
       <Route element={<ProtectedRoute />}>
         <Route path="/" element={<Dashboard />} />
         <Route path="/jobs" element={<Jobs />} />
+        <Route path="/health" element={<HealthDashboard />} />
         <Route path="/accounts" element={<Accounts />} />
         <Route path="/scrape" element={<ScrapeUsers />} />
         <Route path="/monitor" element={<MonitorGroups />} />
@@ -47,6 +53,9 @@ const AppRoutes = () => {
         <Route path="/help" element={<Help />} />
         <Route path="/proxies" element={<Proxies />} />
         <Route path="/admin" element={<AdminDashboard />} />
+        <Route path="/campaigns" element={<CampaignDashboard />} />
+        <Route path="/campaigns/:id" element={<CampaignDetail />} />
+        <Route path="/templates" element={<Templates />} />
       </Route>
     </Routes>
   );
@@ -59,6 +68,7 @@ function App() {
         <CssBaseline />
         <Router>
           <AuthProvider>
+            <Toaster position="top-right" />
             <AppRoutes />
           </AuthProvider>
         </Router>

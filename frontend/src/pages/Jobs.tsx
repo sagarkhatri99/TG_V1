@@ -16,8 +16,10 @@ import {
   CircularProgress,
   Alert,
   Button,
+  Tooltip,
 } from '@mui/material';
 import { PlayArrow, Pause, Delete, Refresh, Download, RestartAlt, Analytics } from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
 import type { AxiosResponse } from 'axios';
 import api from '../api/Index';
 import JobReportsDialog from '../components/JobReportsDialog';
@@ -38,6 +40,7 @@ interface Job {
 }
 
 export default function Jobs() {
+  const navigate = useNavigate();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [alert, setAlert] = useState<{ type: 'success' | 'error', message: string } | null>(null);
@@ -117,6 +120,34 @@ export default function Jobs() {
     }
   };
 
+  const handleDownloadReports = async () => {
+    try {
+      const response: AxiosResponse<Blob> = await api.get('/api/jobs/reports/download', {
+        responseType: 'blob',
+      });
+
+      const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+
+      // Extract filename from header or use default
+      const dispo = (response.headers['content-disposition'] || '') as string;
+      const match = dispo.match(/filename="?([^\";]+)"?/i);
+      const filename = match ? match[1] : `job_reports_${new Date().toISOString().split('T')[0]}.csv`;
+
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+
+      setAlert({ type: 'success', message: 'Job reports downloaded successfully!' });
+    } catch (error: any) {
+      setAlert({ type: 'error', message: error.response?.data?.detail || 'Failed to download job reports' });
+    }
+  };
+
   const handleDownload = async (jobId: number, jobType: string) => {
     try {
       const endpoint = jobType === 'group_monitor' ? '/api/group-monitor/download' : '/api/scrape-users/download';
@@ -161,6 +192,17 @@ export default function Jobs() {
     return <Chip label={status} color={colorMap[status] as any} />;
   };
 
+  const getTypeChip = (type: string) => {
+    const colorMap: any = {
+      scrape_users: 'info',
+      group_monitor: 'secondary',
+      campaign: 'success',
+      mass_dm_account: 'primary',
+      mass_dm_bot: 'primary'
+    };
+    return <Chip label={type.replace('_', ' ').toUpperCase()} size="small" variant="outlined" color={colorMap[type] || 'default'} />;
+  };
+
   return (
     <Box>
       <Typography variant="h4" gutterBottom>
@@ -187,7 +229,14 @@ export default function Jobs() {
                 onClick={fetchReports}
                 disabled={reportsLoading}
               >
-                {reportsLoading ? <CircularProgress size={20} /> : 'Job Reports'}
+                {reportsLoading ? <CircularProgress size={20} /> : 'View Reports'}
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<Download />}
+                onClick={handleDownloadReports}
+              >
+                Download CSV
               </Button>
               <IconButton onClick={() => { setLoading(true); fetchJobs(); }} disabled={loading}>
                 <Refresh />
@@ -217,13 +266,13 @@ export default function Jobs() {
                   {jobs.map((job) => (
                     <TableRow key={job.id}>
                       <TableCell>{job.id}</TableCell>
-                      <TableCell>{job.job_type}</TableCell>
+                      <TableCell>{getTypeChip(job.job_type)}</TableCell>
                       <TableCell>
                         <Typography variant="body2" title={job.user_description || 'No description'}>
-                          {job.user_description ? (job.user_description.length > 50 ? 
-                            `${job.user_description.substring(0, 50)}...` : 
-                            job.user_description) : 
-                          'No description'}
+                          {job.user_description ? (job.user_description.length > 50 ?
+                            `${job.user_description.substring(0, 50)}...` :
+                            job.user_description) :
+                            'No description'}
                         </Typography>
                       </TableCell>
                       <TableCell>{getStatusChip(job.status)}</TableCell>
@@ -276,6 +325,23 @@ export default function Jobs() {
                             <Download />
                           </IconButton>
                         )}
+                        {job.job_type === 'campaign' && (
+                          <Tooltip title="View Campaign">
+                            <IconButton
+                              size="small"
+                              onClick={() => {
+                                const config = JSON.parse((job as any).config || '{}');
+                                if (config.campaign_id) {
+                                  navigate(`/campaigndashboard?id=${config.campaign_id}`);
+                                } else {
+                                  navigate('/campaigndashboard');
+                                }
+                              }}
+                            >
+                              <Analytics />
+                            </IconButton>
+                          </Tooltip>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -285,7 +351,7 @@ export default function Jobs() {
           )}
         </CardContent>
       </Card>
-      
+
       <JobReportsDialog
         open={showReports}
         onClose={() => setShowReports(false)}

@@ -19,6 +19,8 @@ from routers.auth import router as auth_router, get_current_user
 from routers.proxies import router as proxies_router
 from routers.admin import router as admin_router
 from routers.subscriptions import router as subscriptions_router
+from routers.health import router as health_router
+from routers.campaigns import router as campaigns_router
 from core.session_manager import session_manager
 from core.config import settings
 from core.logging import setup_json_logging, get_logger, set_correlation_id
@@ -39,7 +41,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )
 
@@ -153,6 +155,8 @@ app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(proxies_router, prefix="/api/proxies", tags=["Proxies"])
 app.include_router(admin_router, prefix="/api/admin", tags=["Admin"])
 app.include_router(subscriptions_router, prefix="/api/subscriptions", tags=["Subscriptions"])
+app.include_router(campaigns_router)
+app.include_router(health_router)  # Health router has its own prefix
 
 if __name__ == "__main__":
     import uvicorn

@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from models import Job, TelegramAccount
 from database import SessionLocal
 from core.session_manager import session_manager
+from core.human_aware_task import HumanAwareTask
 import json
 import logging
 import random
@@ -134,7 +135,7 @@ async def _auto_promo_runner(job: Job, db: Session):
             logger.info(f"Job {job.id} sleeping for {sleep_time} seconds.")
             await asyncio.sleep(sleep_time)
 
-@celery_app.task(bind=True, max_retries=3)
+@celery_app.task(base=HumanAwareTask, bind=True, max_retries=3)
 def auto_promo_task(self, job_id: int):
     db: Session = SessionLocal()
     job = db.query(Job).filter(Job.id == job_id).first()

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Container, TextField, Button, Typography, Box, Link } from '@mui/material';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 
 const LoginPage: React.FC = () => {
     const [email, setEmail] = useState('');
@@ -14,32 +15,46 @@ const LoginPage: React.FC = () => {
         e.preventDefault();
         setError('');
 
+        console.log('Login attempt:', email);
+
         try {
-            const response = await fetch('/api/auth/login', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    email: email,
-                    password: password,
-                }),
+            const response = await axios.post('http://localhost:8000/api/auth/login', {
+                username: email,
+                password: password,
             });
 
-            if (!response.ok) {
-                const data = await response.json();
-                throw new Error(data.detail || 'Login failed');
+            console.log('Login success:', response.data);
+
+            const token = response.data.token || response.data.access_token;
+            if (token) {
+                login(token, response.data.user);
+                if (response.data.user.subscription_plan === 'admin') {
+                    navigate('/admin');
+                } else {
+                    navigate('/');
+                }
+            } else {
+                throw new Error('No token received from server');
             }
 
-            const data = await response.json();
-            login(data.access_token);
-            navigate('/');
-        } catch (err) {
-            if (err instanceof Error) {
-                setError(err.message);
-            } else {
-                setError('An unknown error occurred.');
+        } catch (err: any) {
+            console.error('Login error:', err);
+
+            let message = 'An unexpected error occurred. Please try again.';
+
+            if (axios.isAxiosError(err)) {
+                if (err.response) {
+                    message = err.response.data?.detail || err.response.data?.message || `Error ${err.response.status}: ${err.response.statusText}`;
+                } else if (err.request) {
+                    message = 'No response from server. Please check if the backend is running.';
+                } else {
+                    message = err.message;
+                }
+            } else if (err instanceof Error) {
+                message = err.message;
             }
+
+            setError(message);
         }
     };
 
@@ -83,7 +98,7 @@ const LoginPage: React.FC = () => {
                         onChange={(e) => setPassword(e.target.value)}
                     />
                     {error && (
-                        <Typography color="error" align="center">
+                        <Typography color="error" align="center" sx={{ mt: 2 }}>
                             {error}
                         </Typography>
                     )}

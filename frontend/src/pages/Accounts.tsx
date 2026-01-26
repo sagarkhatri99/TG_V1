@@ -34,10 +34,14 @@ import {
   Science as TestIcon,
   Delete as DeleteIcon,
   Edit as EditIcon,
+  Settings as CampaignIcon,
+  Upload as UploadIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import api, { endpoints } from '../api/Index';
-import type { TelegramAccount, CreateAccountRequest, Proxy } from '../Types/Index';
+import type { TelegramAccount, CreateAccountRequest, Proxy, AccountOperatingHours } from '../Types/Index';
+import { updateAccountOperatingHours } from '../api/Campaigns';
+import { ImportSessionsDialog } from '../components/accounts/ImportSessionsDialog';
 
 export default function Accounts() {
   const [accounts, setAccounts] = useState<TelegramAccount[]>([]);
@@ -46,13 +50,20 @@ export default function Accounts() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [verifyDialogOpen, setVerifyDialogOpen] = useState(false);
   const [editProxyDialogOpen, setEditProxyDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState<TelegramAccount | null>(null);
   const [selectedProxyId, setSelectedProxyId] = useState<number | ''>('');
+  const [campaignSettingsDialogOpen, setCampaignSettingsDialogOpen] = useState(false);
+  const [operatingHours, setOperatingHours] = useState<AccountOperatingHours>({
+    sleep_hour_start: 0,
+    sleep_hour_end: 7,
+    daily_message_limit: 50
+  });
   const [alert, setAlert] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   const [loadingActions, setLoadingActions] = useState<{ [key: number]: string }>({});
 
-  const [createForm, setCreateForm] = useState<CreateAccountRequest & { proxy_id?: number | '' }>({
-    api_id: 0,
+  const [createForm, setCreateForm] = useState<Omit<CreateAccountRequest, 'proxy_id'> & { proxy_id: number | '' }>({
+    api_id: '',
     api_hash: '',
     phone_number: '',
     nickname: '',
@@ -92,7 +103,7 @@ export default function Accounts() {
     try {
       const formData = new FormData();
       Object.entries(createForm).forEach(([key, value]) => {
-        formData.append(key, value.toString());
+        formData.append(key, (value as any).toString());
       });
 
 
@@ -109,14 +120,18 @@ export default function Accounts() {
 
       // Show verify dialog
       setSelectedAccount({
-        ...createForm,
         id: response.data.account_id,
+        phone_number: createForm.phone_number,
+        nickname: createForm.nickname,
+        proxy_id: createForm.proxy_id ? Number(createForm.proxy_id) : undefined,
         status: 'pending_verification',
         trust_score: 0,
         risk_score: 0,
-        last_activity: '',
+        last_activity: new Date().toISOString(),
         daily_message_count: 0,
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
+        sleep_hour_start: undefined,
+        sleep_hour_end: undefined,
       });
       setVerifyDialogOpen(true);
 
@@ -267,6 +282,29 @@ export default function Accounts() {
     }
   };
 
+  const handleOpenCampaignSettings = (account: TelegramAccount) => {
+    setSelectedAccount(account);
+    setOperatingHours({
+      sleep_hour_start: account.sleep_hour_start || 0,
+      sleep_hour_end: account.sleep_hour_end || 7,
+      daily_message_limit: account.daily_message_limit || 50
+    });
+    setCampaignSettingsDialogOpen(true);
+  };
+
+  const handleUpdateCampaignSettings = async () => {
+    if (!selectedAccount) return;
+
+    try {
+      await updateAccountOperatingHours(selectedAccount.id, operatingHours);
+      setAlert({ type: 'success', message: 'Account operating hours updated successfully!' });
+      setCampaignSettingsDialogOpen(false);
+      fetchAccounts();
+    } catch (error: any) {
+      setAlert({ type: 'error', message: error.response?.data?.detail || 'Failed to update operating hours' });
+    }
+  };
+
 
   const getStatusColor = (status: string): any => {
     switch (status) {
@@ -299,13 +337,22 @@ export default function Accounts() {
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4">Accounts Management</Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => setCreateDialogOpen(true)}
-        >
-          Add Account
-        </Button>
+        <Box display="flex" gap={2}>
+          <Button
+            variant="outlined"
+            startIcon={<UploadIcon />}
+            onClick={() => setImportDialogOpen(true)}
+          >
+            Import Sessions
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setCreateDialogOpen(true)}
+          >
+            Add Account
+          </Button>
+        </Box>
       </Box>
 
 
@@ -425,6 +472,15 @@ export default function Accounts() {
                             <EditIcon />
                           </IconButton>
                         </Tooltip>
+                        <Tooltip title="Campaign Settings">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleOpenCampaignSettings(account)}
+                            disabled={!!loadingActions[account.id]}
+                          >
+                            <CampaignIcon />
+                          </IconButton>
+                        </Tooltip>
                         <Tooltip title="Delete Account">
                           <IconButton
                             size="small"
@@ -459,7 +515,7 @@ export default function Accounts() {
                     label="API ID"
                     type="number"
                     value={createForm.api_id || ''}
-                    onChange={(e) => setCreateForm({ ...createForm, api_id: parseInt(e.target.value) || 0 })}
+                    onChange={(e) => setCreateForm({ ...createForm, api_id: e.target.value })}
                   />
                 </Box>
                 <Box sx={{ flex: 1 }}>
@@ -568,6 +624,59 @@ export default function Accounts() {
           <Button onClick={handleUpdateProxy} variant="contained">Update Proxy</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Campaign Settings Dialog */}
+      <Dialog open={campaignSettingsDialogOpen} onClose={() => setCampaignSettingsDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Account Operating Hours: {selectedAccount?.nickname}</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <Typography variant="subtitle2">Sleep Hours (Pause Activity During These Hours)</Typography>
+            <Box display="flex" gap={2}>
+              <TextField
+                label="Sleep Start (Hour)"
+                type="number"
+                size="small"
+                value={operatingHours.sleep_hour_start}
+                onChange={(e) => setOperatingHours({ ...operatingHours, sleep_hour_start: parseInt(e.target.value) })}
+                inputProps={{ min: 0, max: 23 }}
+                helperText="Hour to start sleeping (0-23)"
+              />
+              <TextField
+                label="Sleep End (Hour)"
+                type="number"
+                size="small"
+                value={operatingHours.sleep_hour_end}
+                onChange={(e) => setOperatingHours({ ...operatingHours, sleep_hour_end: parseInt(e.target.value) })}
+                inputProps={{ min: 0, max: 23 }}
+                helperText="Hour to wake up (0-23)"
+              />
+            </Box>
+
+            <TextField
+              label="Daily Message Limit"
+              type="number"
+              size="small"
+              value={operatingHours.daily_message_limit}
+              onChange={(e) => setOperatingHours({ ...operatingHours, daily_message_limit: parseInt(e.target.value) })}
+              helperText="Maximum messages per 24h (applies to all activities)"
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCampaignSettingsDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleUpdateCampaignSettings} variant="contained">Save Settings</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Import Sessions Dialog */}
+      <ImportSessionsDialog
+        open={importDialogOpen}
+        onClose={() => setImportDialogOpen(false)}
+        onSuccess={() => {
+          setImportDialogOpen(false);
+          fetchAccounts();
+        }}
+      />
     </Box>
   );
 }
