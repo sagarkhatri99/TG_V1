@@ -35,6 +35,10 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash"""
     return pwd_context.verify(plain_password, hashed_password)
 
+def get_password_hash(password: str) -> str:
+    """Hash a password"""
+    return pwd_context.hash(password)
+
 def create_access_token(data: dict) -> str:
     """Create JWT access token"""
     to_encode = data.copy()
@@ -117,3 +121,7 @@ async def get_current_user(
         )
     return user
 
+# Add token endpoint for standard OAuth2 flow if needed
+@router.post("/token")
+async def login(form_data: LoginRequest, db: Session = Depends(get_db)):
+    return await login_for_access_token(form_data, db)
