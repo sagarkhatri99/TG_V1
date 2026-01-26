@@ -21,7 +21,7 @@ import {
 import { PlayArrow, Pause, Delete, Refresh, Download, RestartAlt, Analytics } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import type { AxiosResponse } from 'axios';
-import api from '../api/Index';
+import api, { endpoints } from '../api/Index';
 import JobReportsDialog from '../components/JobReportsDialog';
 
 interface Job {
@@ -50,7 +50,7 @@ export default function Jobs() {
 
   const fetchJobs = async () => {
     try {
-      const response = await api.get('/api/jobs/list');
+      const response = await api.get(endpoints.jobs.list);
       setJobs(response.data.jobs);
     } catch (error) {
       setAlert({ type: 'error', message: 'Failed to fetch jobs.' });
@@ -85,7 +85,7 @@ export default function Jobs() {
 
   const handleRestart = async (jobId: number) => {
     try {
-      await api.post(`/api/jobs/${jobId}/restart`);
+      await api.post(endpoints.jobs.restart(jobId));
       setAlert({ type: 'success', message: 'Job restarted successfully.' });
       fetchJobs();
     } catch (error: any) {
@@ -99,7 +99,7 @@ export default function Jobs() {
       return;
     }
     try {
-      await api.delete(`/api/jobs/${jobId}`);
+      await api.delete(endpoints.jobs.delete(jobId));
       setAlert({ type: 'success', message: 'Job deleted successfully.' });
       fetchJobs();
     } catch (error) {
@@ -150,7 +150,7 @@ export default function Jobs() {
 
   const handleDownload = async (jobId: number, jobType: string) => {
     try {
-      const endpoint = jobType === 'group_monitor' ? '/api/group-monitor/download' : '/api/scrape-users/download';
+      const endpoint = jobType === 'group_monitor' ? endpoints.monitoring.download : endpoints.scraping.download;
       const response: AxiosResponse<Blob> = await api.get(endpoint, {
         params: { job_id: jobId },
         responseType: 'blob',
