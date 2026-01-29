@@ -4,12 +4,18 @@ from sqlalchemy import desc
 from typing import List, Optional
 from datetime import datetime
 import json
+import uuid
+import logging
 
 from database import get_db
 from models import Campaign, CampaignUserInteraction, User, TelegramAccount, Job, CampaignLog
 from routers.auth import get_current_user
 from core.dependencies import plan_based_dependency
 from celery_app import celery_app
+from services.campaign.orchestrator import create_parent_job, start_campaign_orchestration
+from celery.exceptions import CeleryError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api/campaigns",
@@ -243,6 +249,9 @@ def start_campaign(
     """
     Start or resume a campaign.
     """
+    corr_id = str(uuid.uuid4())
+    logger.info(f"[{corr_id}] Starting campaign {campaign_id}")
+
     campaign = db.query(Campaign).filter(
         Campaign.id == campaign_id,
         Campaign.user_id == current_user.id
@@ -262,19 +271,49 @@ def start_campaign(
     if not account or account.status != "active":
          raise HTTPException(status_code=400, detail="Campaign account is not active")
 
-    # Update status
-    campaign.status = "running"
-    if not campaign.start_at:
-        campaign.start_at = datetime.utcnow()
+    try:
+        # 1. Update Campaign Status
+        campaign.status = "running"
+        if not campaign.start_at:
+            campaign.start_at = datetime.utcnow()
 
-    db.commit()
+        # 2. Create Parent Job (Flush, don't commit yet)
+        logger.info(f"[{corr_id}] Creating parent job...")
+        job = create_parent_job(campaign, current_user.id, db)
 
-    # Dispatch Celery Task
-    # Note: We import task name as string to avoid circular imports if strictly typed,
-    # or ensure tasks are loaded. Here we use send_task or import.
-    celery_app.send_task("tasks.campaign_tasks.start_campaign_task", args=[campaign.id])
+        # 3. Dispatch to Celery
+        logger.info(f"[{corr_id}] Dispatching to Celery...")
+        task_result = start_campaign_orchestration(
+            job_id=job.id,
+            campaign_config={'campaign_id': campaign.id},
+            queue='campaign_high'
+        )
 
-    return {"message": "Campaign started", "status": "running"}
+        # 4. Link Task ID to Job
+        job.celery_task_id = task_result.id
+
+        # 5. Commit Atomically
+        db.commit()
+        logger.info(f"[{corr_id}] Success. Job={job.id} Task={task_result.id}")
+
+        return {
+            "message": "Campaign started successfully",
+            "job_id": job.id,
+            "task_id": task_result.id,
+            "status": "running"
+        }
+
+    except CeleryError as e:
+        db.rollback()
+        logger.error(f"[{corr_id}] Celery dispatch failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to queue campaign. Please try again.")
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[{corr_id}] Start campaign failed: {e}")
+        # If dispatch succeeded but commit failed, we should theoretically revoke the task
+        # But for now, let's rely on standard error handling
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 @router.post("/{campaign_id}/pause")
 def pause_campaign(

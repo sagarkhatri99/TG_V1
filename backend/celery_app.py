@@ -81,6 +81,7 @@ celery_app.conf.update(
         'scrape_user_id.tasks.scrape_users_task': {'queue': 'short_tasks'},
         'core.cleanup_tasks.*': {'queue': 'celery'},
         # Campaign tasks - explicit routing to campaign_high
+        'tasks.campaign_tasks.initialize_campaign': {'queue': 'campaign_high'},
         'tasks.campaign_tasks.send_message_1': {'queue': 'campaign_high'},
         'tasks.campaign_tasks.send_message_2': {'queue': 'campaign_high'},
         'tasks.campaign_tasks.send_message_3': {'queue': 'campaign_high'},
