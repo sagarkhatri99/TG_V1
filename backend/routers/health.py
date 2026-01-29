@@ -1,46 +1,65 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends
 from sqlalchemy import text
+from celery import current_app as celery_app
 from database import get_db
-import psutil
-import time
+import redis
+import os
 
-router = APIRouter(
-    prefix="/health",
-    tags=["Health"]
-)
+router = APIRouter(prefix="/api/health", tags=["health"])
 
-@router.get("/")
-def health_check(db: Session = Depends(get_db)):
-    """
-    Basic health check endpoint.
-    Verifies API is running and database connection is active.
-    """
-    start_time = time.time()
-    health_status = {
-        "status": "healthy",
-        "timestamp": time.time(),
-        "database": "unknown",
-        "system": {
-            "cpu_usage": psutil.cpu_percent(),
-            "memory_usage": psutil.virtual_memory().percent
-        }
-    }
+redis_client = redis.from_url(os.getenv('REDIS_URL', 'redis://redis:6379/0'))
 
+@router.get("/diagnose")
+def diagnose():
+    checks = {"status": "healthy", "checks": {}}
+
+    # Redis check
     try:
-        # Simple query to check DB connection
-        db.execute(text("SELECT 1"))
-        health_status["database"] = "connected"
+        redis_client.ping()
+        checks["checks"]["redis"] = "ok"
     except Exception as e:
-        health_status["status"] = "degraded"
-        health_status["database"] = f"error: {str(e)}"
+        checks["checks"]["redis"] = {"status": "failed", "error": str(e)}
+        checks["status"] = "unhealthy"
 
-    health_status["latency"] = round((time.time() - start_time) * 1000, 2)
-    return health_status
+    # Database check
+    try:
+        db = next(get_db())
+        db.execute(text("SELECT 1"))
+        checks["checks"]["db"] = "ok"
+    except Exception as e:
+        checks["checks"]["db"] = {"status": "failed", "error": str(e)}
+        checks["status"] = "unhealthy"
 
-@router.get("/overview")
-def health_overview(db: Session = Depends(get_db)):
-    """
-    Alias for /health/ for consistency with other endpoints
-    """
-    return health_check(db)
+    # Celery broker check
+    try:
+        celery_app.connection().ensure_connection(max_retries=3)
+        checks["checks"]["celery_broker"] = "ok"
+    except Exception as e:
+        checks["checks"]["celery_broker"] = {"status": "failed", "error": str(e)}
+        checks["status"] = "unhealthy"
+
+    # Workers check (CRITICAL: Check for campaign worker)
+    try:
+        inspect = celery_app.control.inspect()
+        active = inspect.active()
+
+        if not active:
+            checks["checks"]["workers"] = {"status": "warning", "message": "No workers found"}
+            checks["status"] = "degraded"
+        else:
+            has_campaign_worker = any('campaign' in str(w).lower() for w in active.keys())
+            checks["checks"]["workers"] = {
+                "status": "ok",
+                "active_workers": list(active.keys()),
+                "has_campaign_worker": has_campaign_worker
+            }
+
+            if not has_campaign_worker:
+                checks["status"] = "degraded"
+                checks["checks"]["workers"]["warning"] = "campaign worker not found"
+
+    except Exception as e:
+        checks["checks"]["workers"] = {"status": "failed", "error": str(e)}
+        checks["status"] = "unhealthy"
+
+    return checks
