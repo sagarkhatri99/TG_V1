@@ -14,6 +14,7 @@ from models import (
 )
 from core.session_manager import session_manager
 from core.account_protection import rate_limiter
+from utils.template_processor import process_template_variations
 
 logger = logging.getLogger(__name__)
 
@@ -148,7 +149,7 @@ def send_message_1(self, campaign_id: int, interaction_id: int, account_id: int)
              if isinstance(tpl, dict):
                  message_text = tpl.get("content", "Hello!")
              else:
-                 message_text = str(tpl)
+                 message_text = process_template_variations(str(tpl))
 
         # Send Message
         async def _send():

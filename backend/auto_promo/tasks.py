@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 import asyncio
 import os
 from telethon.errors import FloodWaitError, ChatWriteForbiddenError
+from utils.template_processor import process_template_variations
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,7 @@ async def _auto_promo_runner(job: Job, db: Session):
 
     config = json.loads(job.config)
     target_group = config.get('target_group')
-    promo_message = config.get('promo_message')
+    promo_message = process_template_variations(config.get('promo_message', ''))
     image_file_path = config.get('image_file_path')
     rate_limit_per_hour = config.get('rate_limit_per_hour')
     interval_seconds = config.get('interval_seconds', 3600)

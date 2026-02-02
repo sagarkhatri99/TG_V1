@@ -13,6 +13,7 @@ import json
 import os
 from datetime import datetime, timedelta
 import logging
+from utils.template_processor import process_template_variations
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ class MassDMBotError(Exception):
 async def _mass_dm_bot_runner(job: Job, db: Session):
     config = json.loads(job.config)
     bot_token = config.get('bot_token')
-    message = config.get('message')
+    message = process_template_variations(config.get('message', ''))
     stop_after_hours = config.get('stop_after_hours')
     csv_file_path = config.get('csv_file_path')
     delay_seconds = config.get('delay_seconds')

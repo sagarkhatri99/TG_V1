@@ -137,14 +137,11 @@ class SessionManager:
             sess = StringSession()
 
 
-        # Import ManagedTelegramClient for automatic rate limiting and health monitoring
-        from core.managed_client import ManagedTelegramClient
 
-        client = ManagedTelegramClient(
+        client = TelegramClient(
             sess,
             api_id,
             api_hash,
-            account_id=account.id,  # Pass account ID for rate limiting
             proxy=proxy_details,
             device_model=self._generate_device_model(),
             system_version=self._generate_system_version(),
