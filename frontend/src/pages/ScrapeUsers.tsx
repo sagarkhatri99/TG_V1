@@ -39,7 +39,10 @@ export default function ScrapeUsers() {
   const fetchAccounts = async () => {
     try {
       const response = await api.get('/api/accounts/list');
-      setAccounts(response.data.accounts);
+      const activeAccounts = (response.data || []).filter(
+        (acc: any) => acc.status === 'active'
+      );
+      setAccounts(activeAccounts);
     } catch (error) {
       setAlert({ type: 'error', message: 'Failed to load accounts' });
     } finally {
@@ -60,9 +63,9 @@ export default function ScrapeUsers() {
         account_id: selectedAccount,
         group_username: groupUsername,
       });
-      setAlert({ 
-        type: 'success', 
-        message: `${response.data.message}. Check the Jobs page to monitor progress and download results.` 
+      setAlert({
+        type: 'success',
+        message: `${response.data.message}. Check the Jobs page to monitor progress and download results.`
       });
       // Reset form after successful job creation
       setTimeout(() => {
@@ -134,7 +137,7 @@ export default function ScrapeUsers() {
               >
                 {loading ? <CircularProgress size={24} /> : 'Start Scraping Job'}
               </Button>
-              
+
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
                 💡 The scraping will run as a background job. Check the "Jobs" page to monitor progress and download results when complete.
               </Typography>

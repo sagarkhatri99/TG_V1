@@ -13,29 +13,25 @@ interface TemplateSelectorProps {
 export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
   value,
   onChange,
-  category
 }) => {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    fetchTemplates();
-  }, [category]);
-
-  const fetchTemplates = async () => {
-    setLoading(true);
-    try {
-      const response = await api.get('/api/campaigns/templates', {
-        params: category ? { category } : {}
-      });
-      setTemplates(response.data);
-    } catch (error) {
-      console.error('Failed to fetch templates:', error);
-      setTemplates([]);
-    } finally {
-      setLoading(false);
-    }
-  };
+    const loadTemplates = async () => {
+      setLoading(true);
+      try {
+        const response = await api.get('/api/templates');
+        setTemplates(response.data || []);
+      } catch (error) {
+        console.error('Failed to load templates:', error);
+        setTemplates([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadTemplates();
+  }, []); // Empty dependency array means this runs once on mount
 
   const handleChange = (event: SelectChangeEvent<number>) => {
     const templateId = event.target.value as number;

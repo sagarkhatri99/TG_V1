@@ -9,7 +9,7 @@ from models import MessageTemplate, User
 from routers.auth import get_current_user
 
 router = APIRouter(
-    prefix="/api/campaigns/templates",
+    prefix="/api/templates",
     tags=["Templates"]
 )
 

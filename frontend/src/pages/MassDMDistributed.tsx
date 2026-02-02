@@ -45,7 +45,10 @@ export default function MassDMDistributed() {
     const fetchAccounts = async () => {
       try {
         const response = await api.get('/api/accounts/list');
-        setAccounts(response.data.accounts.filter((a: TelegramAccount) => a.status === 'active'));
+        const activeAccounts = (response.data || []).filter(
+          (acc: any) => acc.status === 'active'
+        );
+        setAccounts(activeAccounts);
       } catch (error) {
         setAlert({ type: 'error', message: 'Failed to fetch accounts.' });
       }

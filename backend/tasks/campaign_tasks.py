@@ -14,7 +14,7 @@ from models import (
 )
 from core.session_manager import session_manager
 from core.account_protection import rate_limiter
-from utils.template_processor import process_template_variations
+from utils.template_processor import process_template_variations, process_template_with_variables
 
 logger = logging.getLogger(__name__)
 
@@ -141,15 +141,50 @@ def send_message_1(self, campaign_id: int, interaction_id: int, account_id: int)
             db.commit()
             return
 
-        # Determine Message Content
+        # Determine Message Content with Template Support
+        template_text = None
+        
+        # 1. Check if campaign has template_id (stored in message_templates if it's a dict)
         templates = campaign.message_templates
-        message_text = "Hello!"
-        if isinstance(templates, list) and len(templates) > 0:
-             tpl = templates[0]
-             if isinstance(tpl, dict):
-                 message_text = tpl.get("content", "Hello!")
-             else:
-                 message_text = process_template_variations(str(tpl))
+        template_id = None
+        
+        # Support both: {"template_id": 1, ...} or legacy array format
+        if isinstance(templates, dict) and "template_id" in templates:
+            template_id = templates.get("template_id")
+        elif isinstance(templates, list) and len(templates) > 0:
+            first_tpl = templates[0]
+            if isinstance(first_tpl, dict) and "template_id" in first_tpl:
+                template_id = first_tpl.get("template_id")
+        
+        # Load template from database if template_id exists
+        if template_id:
+            from models import MessageTemplate
+            tpl = db.query(MessageTemplate).filter(
+                MessageTemplate.id == template_id,
+                MessageTemplate.user_id == campaign.user_id
+            ).first()
+            if tpl:
+                template_text = tpl.content
+                logger.info(f"Using template #{template_id}: {tpl.name}")
+        
+        # 2. Fallback to existing message_templates logic
+        if not template_text:
+            if isinstance(templates, list) and len(templates) > 0:
+                tpl = templates[0]
+                if isinstance(tpl, dict):
+                    template_text = tpl.get("content", "Hello!")
+                else:
+                    template_text = str(tpl)
+            else:
+                template_text = "Hello!"
+        
+        # 3. Process template with variables
+        from utils.template_processor import process_template_with_variables
+        variables = {
+            "name": interaction.telegram_first_name or "friend",
+            "username": interaction.target_username or "",
+        }
+        message_text = process_template_with_variables(template_text, variables)
 
         # Send Message
         async def _send():

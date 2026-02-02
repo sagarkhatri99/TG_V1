@@ -16,7 +16,7 @@ import {
 import { ArrowBack as BackIcon } from '@mui/icons-material';
 import { TemplateSelector } from '../components/shared/TemplateSelector';
 import api from '../api/Index';
-import type { TelegramAccount, Template, CreateCampaignRequest } from '../Types/Index';
+import type { TelegramAccount, Template } from '../Types/Index';
 import toast from 'react-hot-toast';
 
 export default function CampaignCreate() {
@@ -39,17 +39,16 @@ export default function CampaignCreate() {
 
     const fetchAccounts = async () => {
         try {
-            // Try /api/accounts/list first, fallback to /api/accounts/
-            let response;
-            try {
-                response = await api.get('/api/accounts/list');
-            } catch {
-                response = await api.get('/api/accounts/');
-            }
-            setAccounts(response.data.filter((acc: TelegramAccount) => acc.status === 'active'));
+            const response = await api.get('/api/accounts/list');
+            // Filter for active accounts only
+            const activeAccounts = (response.data || []).filter(
+                (acc: any) => acc.status === 'active'
+            );
+            setAccounts(activeAccounts);
         } catch (error: any) {
             console.error('Failed to fetch accounts:', error);
-            toast.error('Failed to load accounts');
+            toast.error(error.response?.data?.detail || 'Failed to load accounts');
+            setAccounts([]); // Set empty array on error
         }
     };
 
@@ -100,7 +99,9 @@ export default function CampaignCreate() {
         const campaignData: any = {
             name: formData.name,
             telegram_account_id: formData.telegram_account_id,
-            message_templates: selectedTemplate ? [selectedTemplate.content] : [],
+            message_templates: selectedTemplate
+                ? [{ template_id: selectedTemplate.id, content: selectedTemplate.content }]
+                : [],
             manual_targets: targets,
             min_delay: formData.min_delay,
             max_delay: formData.max_delay,

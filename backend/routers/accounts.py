@@ -194,9 +194,15 @@ async def list_accounts(db: Session = Depends(get_db), current_user: User = Depe
             "risk_score": risk_score,
             "last_activity": account.last_activity,
             "daily_message_count": account.daily_message_count,
-            "created_at": account.created_at
+            "created_at": account.created_at,
+            "sleep_hour_start": account.sleep_hour_start,
+            "sleep_hour_end": account.sleep_hour_end,
+            "daily_message_limit": account.daily_message_limit,
+            "proxy_id": account.proxy_id
         })
-    return {"accounts": account_data}
+    # Return array directly, not wrapped in object
+    return account_data
+
 
 @router.post("/{account_id}/test")
 async def test_account_connection(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(plan_based_dependency("accounts"))):
@@ -402,12 +408,22 @@ async def update_account_operating_hours(
     # Invalidate cache to force re-check
     invalidate_account_cache(account_id)
     
-    return {"message": "Account operating hours updated successfully", "account_id": account_id}
+    return {
+        "message": "Account operating hours updated successfully",
+        "account_id": account_id,
+        "updated_at": datetime.utcnow().isoformat(),
+        "settings": {
+            "sleep_hour_start": account.sleep_hour_start,
+            "sleep_hour_end": account.sleep_hour_end,
+            "daily_message_limit": account.daily_message_limit
+        }
+    }
 
 
 @router.post("/import-sessions")
 async def import_sessions(
     files: List[UploadFile] = File(...),
+    proxy_mappings: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(plan_based_dependency("accounts"))
 ):
@@ -419,11 +435,21 @@ async def import_sessions(
     - .json files (metadata with app_id, app_hash, phone, etc.)
     
     Files are paired by basename (e.g., 6285641920523.session + 6285641920523.json)
+    
+    Optional proxy_mappings: JSON string mapping basename to proxy_id
     """
     from telethon import TelegramClient
     from telethon.sessions import SQLiteSession
     
     results = {"success": [], "errors": [], "summary": {}}
+    
+    # Parse proxy mappings if provided
+    proxy_map = {}
+    if proxy_mappings:
+        try:
+            proxy_map = json.loads(proxy_mappings)
+        except:
+            pass
     
     # Group files by basename
     session_files = {}
@@ -505,6 +531,8 @@ async def import_sessions(
                 continue
             
             # 5. Create account record (store FILENAME, not converted session)
+            proxy_id = proxy_map.get(basename) if basename in proxy_map else None
+            
             account = TelegramAccount(
                 user_id=current_user.id,
                 phone_number=phone,
@@ -512,6 +540,7 @@ async def import_sessions(
                 api_hash=api_hash,
                 session_string=basename,  # ✅ FILENAME ONLY (no conversion!)
                 nickname=metadata.get('first_name', me.first_name or basename),
+                proxy_id=proxy_id,  # Assign proxy if provided
                 status='active',
                 trust_score=random.randint(40, 70),
                 created_at=datetime.utcnow(),

@@ -87,10 +87,12 @@ export default function Accounts() {
 
   const fetchAccounts = async () => {
     try {
-      const response = await api.get(endpoints.accounts.list);
-      setAccounts(response.data.accounts || []);
-    } catch (error) {
-      setAlert({ type: 'error', message: 'Failed to fetch accounts' });
+      const response = await api.get('/api/accounts/list');
+      setAccounts(response.data || []);
+    } catch (error: any) {
+      console.error('Failed to fetch accounts:', error);
+      setAlert({ type: 'error', message: error.response?.data?.detail || 'Failed to fetch accounts' });
+      setAccounts([]); // Set empty array on error
     } finally {
       setLoading(false);
     }
@@ -105,7 +107,7 @@ export default function Accounts() {
       });
 
 
-      const response = await api.post(endpoints.accounts.create, formData, {
+      const response = await api.post('/api/accounts/create', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
 
@@ -114,7 +116,7 @@ export default function Accounts() {
       setCreateDialogOpen(false);
 
       // Send verification code
-      await api.post(endpoints.accounts.sendCode(response.data.account_id));
+      await api.post(`/api/accounts/${response.data.account_id}/send-code`);
 
       // Show verify dialog
       setSelectedAccount({
@@ -294,10 +296,10 @@ export default function Accounts() {
     if (!selectedAccount) return;
 
     try {
-      await // updateAccountOperatingHours(selectedAccount.id, operatingHours);
-        setAlert({ type: 'success', message: 'Account operating hours updated successfully!' });
+      await api.patch(`/api/accounts/${selectedAccount.id}/operating-hours`, operatingHours);
+      setAlert({ type: 'success', message: 'Account operating hours updated successfully!' });
       setCampaignSettingsDialogOpen(false);
-      fetchAccounts();
+      fetchAccounts(); // Refresh to get updated data from backend
     } catch (error: any) {
       setAlert({ type: 'error', message: error.response?.data?.detail || 'Failed to update operating hours' });
     }

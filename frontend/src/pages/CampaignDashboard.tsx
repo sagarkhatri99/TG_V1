@@ -8,6 +8,7 @@ import {
   Typography,
   Chip,
   LinearProgress,
+  Alert,
 } from '@mui/material';
 import { Add as AddIcon, PlayArrow as PlayIcon } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
@@ -27,7 +28,8 @@ interface Campaign {
 
 export default function CampaignDashboard() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -36,12 +38,17 @@ export default function CampaignDashboard() {
 
   const fetchCampaigns = async () => {
     setLoading(true);
+    setError(null);
     try {
       const response = await api.get('/api/campaigns/');
-      setCampaigns(response.data);
+      setCampaigns(response.data || []);
     } catch (error: any) {
       console.error('Failed to fetch campaigns:', error);
-      toast.error(error.response?.data?.detail || 'Failed to fetch campaigns');
+      const errorMsg = error.response?.data?.detail || 'Failed to fetch campaigns';
+      setError(errorMsg);
+      toast.error(errorMsg);
+      // Set empty array to prevent undefined errors
+      setCampaigns([]);
     } finally {
       setLoading(false);
     }
@@ -90,6 +97,12 @@ export default function CampaignDashboard() {
       </Box>
 
       {loading && <LinearProgress sx={{ mb: 2 }} />}
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+          {error}
+        </Alert>
+      )}
 
       <Grid container spacing={3}>
         {campaigns.length === 0 ? (

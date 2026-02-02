@@ -27,6 +27,8 @@ import toast from 'react-hot-toast';
 export default function Templates() {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState<TemplateCreate>({
     name: '',
     category: 'general',
@@ -38,12 +40,20 @@ export default function Templates() {
   }, []);
 
   const fetchTemplates = async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const response = await api.get('/api/campaigns/templates');
-      setTemplates(response.data);
+      const response = await api.get('/api/templates');
+      setTemplates(response.data || []);
     } catch (error: any) {
       console.error('Failed to fetch templates:', error);
-      toast.error(error.response?.data?.detail || 'Failed to fetch templates');
+      const errorMsg = error.response?.data?.detail || 'Failed to fetch templates';
+      setError(errorMsg);
+      toast.error(errorMsg);
+      // Set empty array to prevent undefined errors
+      setTemplates([]);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -54,7 +64,7 @@ export default function Templates() {
     }
 
     try {
-      await api.post('/api/campaigns/templates', formData);
+      await api.post('/api/templates', formData);
       toast.success('Template created successfully!');
       setDialogOpen(false);
       setFormData({ name: '', category: 'general', content: '' });
@@ -71,7 +81,7 @@ export default function Templates() {
     }
 
     try {
-      await api.delete(`/api/campaigns/templates/${id}`);
+      await api.delete(`/api/templates/${id}`);
       toast.success('Template deleted');
       fetchTemplates();
     } catch (error: any) {
@@ -86,6 +96,18 @@ export default function Templates() {
     return 'error';
   };
 
+  if (loading) {
+    return (
+      <Box sx={{ p: 3, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+        <Box sx={{ textAlign: 'center' }}>
+          <Typography variant="body1" color="text.secondary" gutterBottom>
+            Loading templates...
+          </Typography>
+        </Box>
+      </Box>
+    );
+  }
+
   return (
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -98,6 +120,12 @@ export default function Templates() {
           Create Template
         </Button>
       </Box>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+          {error}
+        </Alert>
+      )}
 
       {templates.length === 0 ? (
         <Alert severity="info">
