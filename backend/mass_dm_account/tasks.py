@@ -23,6 +23,7 @@ from datetime import datetime, timedelta
 import asyncio
 from telethon.errors import FloodWaitError, UserPrivacyRestrictedError, UserIsBotError, UserBlockedError, ChatWriteForbiddenError
 from core.account_protection import rate_limiter, AccountHealthStatus
+from utils.template_processor import process_template_variations
 
 logger = logging.getLogger(__name__)
 
@@ -263,7 +264,7 @@ async def _mass_dm_runner(job: Job, db: Session):
         raise Exception("Account not found")
 
     config = json.loads(job.config)
-    message = config.get('message')
+    message = process_template_variations(config.get('message', ''))
     stop_after_hours = config.get('stop_after_hours')
     csv_file_path = config.get('csv_file_path')
     image_file_path = config.get('image_file_path')
@@ -468,7 +469,9 @@ async def _mass_dm_runner(job: Job, db: Session):
         )
 
 
-@celery_app.task(bind=True, max_retries=3)
+from core.human_aware_task import HumanAwareTask
+
+@celery_app.task(base=HumanAwareTask, bind=True, max_retries=3)
 def mass_dm_account_task(self, job_id: int):
     """
     Main Celery task for mass DM operations.

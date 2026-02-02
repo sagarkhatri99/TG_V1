@@ -1,96 +1,127 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-from datetime import timedelta, datetime
+from pydantic import BaseModel
+from datetime import datetime, timedelta
+from jose import jwt, JWTError
+from passlib.context import CryptContext
+import os
 
 from database import get_db
 import models
-from core import security
-from pydantic import BaseModel, ConfigDict
+from models import User
 
-router = APIRouter()
+router = APIRouter(tags=["Authentication"])
 
-class Token(BaseModel):
-    access_token: str
-    token_type: str
+# Password hashing
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-class UserCreate(BaseModel):
-    email: str
-    password: str
+# JWT settings
+SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 
-class UserOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    
-    id: int
-    email: str
-    subscription_plan: str
-
-@router.post("/register", response_model=UserOut)
-def register_user(user: UserCreate, db: Session = Depends(get_db)):
-    db_user = db.query(models.User).filter(models.User.email == user.email).first()
-    if db_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered",
-        )
-    
-    # Check if this is the first user and make them admin
-    total_users = db.query(models.User).count()
-    subscription_plan = "admin" if total_users == 0 else "free"
-    
-    hashed_password = security.get_password_hash(user.password)
-    db_user = models.User(
-        email=user.email,
-        password_hash=hashed_password,
-        subscription_plan=subscription_plan,
-        billing_cycle=None,
-        trial_end_date=None
-    )
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return db_user
+security = HTTPBearer()
 
 class LoginRequest(BaseModel):
-    email: str
+    username: str  # Frontend sends 'username' (but value is email)
     password: str
 
-@router.post("/login", response_model=Token)
-def login_for_access_token(login_data: LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.email == login_data.email).first()
-    if not user or not security.verify_password(login_data.password, user.password_hash):
+class LoginResponse(BaseModel):
+    token: str
+    user: dict
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a password against its hash"""
+    return pwd_context.verify(plain_password, hashed_password)
+
+def get_password_hash(password: str) -> str:
+    """Hash a password"""
+    return pwd_context.hash(password)
+
+def create_access_token(data: dict) -> str:
+    """Create JWT access token"""
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+@router.post("/login", response_model=LoginResponse)
+async def login_for_access_token(
+    login_data: LoginRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Login endpoint - accepts username (email) and password
+    Returns JWT token and user info
+    """
+
+    # Find user by email (username field contains email)
+    user = db.query(models.User).filter(
+        models.User.email == login_data.username
+    ).first()
+
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
+            detail="Invalid email or password"
+        )
+    
+    # Verify password
+    if not verify_password(login_data.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password"
+        )
+    
+    # Create JWT token
+    access_token = create_access_token(
+        data={"sub": str(user.id), "email": user.email}
+    )
+
+    # Return token and user info
+    return {
+        "token": access_token,
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "subscription_plan": getattr(user, 'subscription_plan', 'free')
+        }
+    }
+
+async def get_current_user(
+    token: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+) -> User:
+    """
+    Get the current authenticated user from JWT token
+    """
+    try:
+        payload = jwt.decode(token.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate credentials",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    access_token_expires = timedelta(minutes=60)
-    access_token = security.create_access_token(
-        data={"sub": user.email}, expires_delta=access_token_expires
-    )
-    return {"access_token": access_token, "token_type": "bearer"}
 
-from fastapi.security import OAuth2PasswordBearer
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
-
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    payload = security.decode_access_token(token)
-    if payload is None:
-        raise credentials_exception
-    email: str = payload.get("sub")
-    if email is None:
-        raise credentials_exception
-    user = db.query(models.User).filter(models.User.email == email).first()
+    user = db.query(models.User).filter(models.User.id == int(user_id)).first()
     if user is None:
-        raise credentials_exception
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return user
 
-@router.get("/users/me", response_model=UserOut)
-def read_users_me(current_user: models.User = Depends(get_current_user)):
-    return current_user
+# Add token endpoint for standard OAuth2 flow if needed
+@router.post("/token")
+async def login(form_data: LoginRequest, db: Session = Depends(get_db)):
+    return await login_for_access_token(form_data, db)

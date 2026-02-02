@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from models import Job, TelegramAccount
 from database import SessionLocal
 from core.session_manager import session_manager
+from core.human_aware_task import HumanAwareTask
 import logging
 import csv
 import os
@@ -78,7 +79,7 @@ async def _scrape_runner(job: Job, db: Session):
         await session_manager.disconnect_client(account.id)
 
 
-@celery_app.task(bind=True, max_retries=3)
+@celery_app.task(base=HumanAwareTask, bind=True, max_retries=3)
 def scrape_users_task(self, job_id: int):
     """Celery task for scraping users from a Telegram group"""
     db: Session = SessionLocal()

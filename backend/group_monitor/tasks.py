@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from models import Job, TelegramAccount
 from database import SessionLocal
 from core.session_manager import session_manager
+from core.human_aware_task import HumanAwareTask
 import json
 import logging
 import csv
@@ -110,7 +111,7 @@ async def _group_monitor_runner(job: Job, db: Session):
         db.commit()
 
 
-@celery_app.task(bind=True, max_retries=3)
+@celery_app.task(base=HumanAwareTask, bind=True, max_retries=3)
 def group_monitor_task(self, job_id: int):
     db: Session = SessionLocal()
     job = db.query(Job).filter(Job.id == job_id).first()

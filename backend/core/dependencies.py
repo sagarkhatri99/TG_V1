@@ -8,17 +8,20 @@ PLAN_FEATURES = {
     # Include both 'jobs' and 'jobs_basic' to satisfy endpoints that depend on either
     "pro": [
         "dashboard", "accounts", "settings", "help", "jobs", "jobs_basic", "scrape", "monitor",
-        "mass_dm", "auto_promo", "proxies", "ban_prevention"
+        "mass_dm", "auto_promo", "proxies", "ban_prevention",
+        # Added campaign permissions for Pro users
+        "campaigns_read", "campaigns_write"
     ],
     "enterprise": [
         "dashboard", "accounts", "settings", "help", "jobs", "jobs_basic", "scrape", "monitor",
-        "mass_dm", "auto_promo", "proxies", "ban_prevention", "ai_scoring"
+        "mass_dm", "auto_promo", "proxies", "ban_prevention", "ai_scoring",
+        "campaigns_read", "campaigns_write"
     ],
     # Admins should have access to all features, including the admin panel
     "admin": [
         "dashboard", "accounts", "settings", "help", "jobs", "jobs_basic", "scrape",
         "monitor", "mass_dm", "auto_promo", "proxies", "ban_prevention", "ai_scoring",
-        "admin_panel"
+        "admin_panel", "campaigns_read", "campaigns_write"
     ]
 }
 

@@ -1,3 +1,15 @@
+"""
+Admin Subscription Management Router
+
+This router is strictly for the internal Admin Panel to manage user subscription plans.
+It allows administrators to:
+1. Upgrade/Downgrade user plans (Free, Pro, Enterprise).
+2. Adjust billing cycles (Monthly, Annual).
+3. Reset trial periods.
+
+It uses the `plan_based_dependency("admin_panel")` to ensure only authorized admins can access these endpoints.
+"""
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel

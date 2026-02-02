@@ -1,5 +1,7 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 
+
+
 interface User {
     id: number;
     email: string;
@@ -10,7 +12,7 @@ interface AuthContextType {
     isAuthenticated: boolean;
     user: User | null;
     token: string | null;
-    login: (token: string) => void;
+    login: (token: string, userData?: User) => void;
     logout: () => void;
     isLoading: boolean;
 }
@@ -23,39 +25,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        const fetchUser = async () => {
-            if (token) {
-                try {
-                    const response = await fetch('/api/auth/users/me', {
-                        headers: {
-                            Authorization: `Bearer ${token}`,
-                        },
-                    });
-                    if (response.ok) {
-                        const userData = await response.json();
-                        setUser(userData);
-                    } else {
-                        // Token is invalid
-                        localStorage.removeItem('token');
-                        setToken(null);
-                        setUser(null);
-                    }
-                } catch (error) {
-                    console.error('Failed to fetch user', error);
-                    localStorage.removeItem('token');
-                    setToken(null);
-                    setUser(null);
-                }
-            }
+        if (token) {
+            // Just mark as authenticated, don't fetch user profile
+            // The user data was already returned from login or is not yet available
             setIsLoading(false);
-        };
-
-        fetchUser();
+        } else {
+            setIsLoading(false);
+        }
     }, [token]);
 
-    const login = (newToken: string) => {
+    const login = (newToken: string, userData?: User) => {
         localStorage.setItem('token', newToken);
         setToken(newToken);
+        if (userData) {
+            setUser(userData);
+        }
     };
 
     const logout = () => {
@@ -63,6 +47,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setToken(null);
         setUser(null);
     };
+
 
     return (
         <AuthContext.Provider

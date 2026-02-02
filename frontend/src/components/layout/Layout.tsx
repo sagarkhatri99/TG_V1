@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { Box, CssBaseline, Drawer, AppBar, Toolbar, List, Typography, Divider, IconButton, ListItem, ListItemButton, ListItemText, Button, ListItemIcon, Chip } from '@mui/material';
 import {
-  Menu as MenuIcon, 
-  Dashboard as DashboardIcon, 
+  Menu as MenuIcon,
+  Dashboard as DashboardIcon,
   Logout as LogoutIcon,
   AccountCircle as AccountsIcon,
   Work as JobsIcon,
@@ -15,6 +15,9 @@ import {
   Help as HelpIcon,
   Dns as ProxiesIcon,
   AdminPanelSettings as AdminIcon,
+  MonitorHeart as HealthIcon,
+  Campaign as CampaignIcon,
+  Description as TemplatesIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -27,6 +30,9 @@ interface LayoutProps {
 
 const allMenuItems = [
   { text: 'Dashboard', icon: <DashboardIcon />, path: '/', plans: ['free', 'pro', 'enterprise'], isNew: false },
+  { text: 'Campaigns', icon: <CampaignIcon />, path: '/campaigns', plans: ['free', 'pro', 'enterprise'], isNew: false },
+  { text: 'Templates', icon: <TemplatesIcon />, path: '/templates', plans: ['free', 'pro', 'enterprise'], isNew: false },
+  { text: 'Health Status', icon: <HealthIcon />, path: '/health', plans: ['free', 'pro', 'enterprise'], isNew: true },
   { text: 'Accounts', icon: <AccountsIcon />, path: '/accounts', plans: ['free', 'pro', 'enterprise'], isNew: false },
   { text: 'Jobs', icon: <JobsIcon />, path: '/jobs', plans: ['free', 'pro', 'enterprise'], isNew: false },
   { text: 'Scrape Users', icon: <ScrapeIcon />, path: '/scrape', plans: ['pro', 'enterprise'], isNew: false },
@@ -92,10 +98,10 @@ export default function Layout({ children }: LayoutProps) {
               </ListItemIcon>
               <ListItemText primary={item.text} />
               {item.isNew && (
-                <Chip 
-                  label="NEW" 
-                  size="small" 
-                  color="success" 
+                <Chip
+                  label="NEW"
+                  size="small"
+                  color="success"
                   sx={{ height: 20, fontSize: '0.6rem' }}
                 />
               )}
@@ -136,8 +142,8 @@ export default function Layout({ children }: LayoutProps) {
           </Typography>
           {user && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Chip 
-                label={user.subscription_plan.toUpperCase()} 
+              <Chip
+                label={user.subscription_plan.toUpperCase()}
                 color={user.subscription_plan === 'free' ? 'default' : user.subscription_plan === 'pro' ? 'primary' : 'secondary'}
                 size="small"
                 variant="outlined"

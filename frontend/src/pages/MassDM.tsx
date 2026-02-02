@@ -16,7 +16,7 @@ import {
   FormControlLabel,
   Radio,
 } from '@mui/material';
-import { Send as SendIcon, Upload as UploadIcon } from '@mui/icons-material';
+import { Send as SendIcon, Upload as UploadIcon, Info as InfoIcon } from '@mui/icons-material';
 import api from '../api/Index';
 import type { TelegramAccount } from '../Types/Index';
 
@@ -29,7 +29,7 @@ export default function MassDM() {
   const [dmMethod, setDmMethod] = useState<DmMethod>('account');
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
-  
+
   const [formData, setFormData] = useState({
     account_id: '',
     bot_token: '',
@@ -37,10 +37,6 @@ export default function MassDM() {
     user_description: '',
     stop_after_hours: '',
     rate_limit_per_hour: '20',
-    delay_seconds: '60',
-    use_random_interval: false,
-    min_delay_seconds: '30',
-    max_delay_seconds: '120',
   });
 
   useEffect(() => {
@@ -48,7 +44,10 @@ export default function MassDM() {
       const fetchAccounts = async () => {
         try {
           const response = await api.get('/api/accounts/list');
-          setAccounts(response.data.accounts);
+          const activeAccounts = (response.data || []).filter(
+            (acc: TelegramAccount) => acc.status === 'active'
+          );
+          setAccounts(activeAccounts);
         } catch (error) {
           setAlert({ type: 'error', message: 'Failed to fetch accounts.' });
         }
@@ -64,6 +63,26 @@ export default function MassDM() {
       } else {
         setImageFile(event.target.files[0]);
       }
+    }
+  };
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const response = await api.get('/api/jobs/mass-dm-template/download', {
+        responseType: 'blob',
+      });
+
+      const blob = new Blob([response.data], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'mass_dm_template.csv';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      setAlert({ type: 'error', message: 'Failed to download template' });
     }
   };
 
@@ -90,12 +109,6 @@ export default function MassDM() {
     }
     if (formData.rate_limit_per_hour) {
       apiFormData.append('rate_limit_per_hour', formData.rate_limit_per_hour);
-    }
-    if (formData.use_random_interval) {
-      apiFormData.append('min_delay_seconds', formData.min_delay_seconds);
-      apiFormData.append('max_delay_seconds', formData.max_delay_seconds);
-    } else if (formData.delay_seconds) {
-      apiFormData.append('delay_seconds', formData.delay_seconds);
     }
 
     let url = '';
@@ -177,7 +190,7 @@ export default function MassDM() {
               value={formData.message}
               onChange={(e) => setFormData({ ...formData, message: e.target.value })}
             />
-            
+
             <TextField
               fullWidth
               label="Job Description (Optional)"
@@ -186,15 +199,39 @@ export default function MassDM() {
               onChange={(e) => setFormData({ ...formData, user_description: e.target.value })}
             />
 
-            <Button
-              variant="outlined"
-              component="label"
-              startIcon={<UploadIcon />}
-            >
-              Upload CSV
-              <input type="file" hidden accept=".csv" onChange={(e) => handleFileChange(e, 'csv')} />
-            </Button>
-            {csvFile && <Typography variant="body2">CSV: {csvFile.name}</Typography>}
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+              <Button
+                variant="outlined"
+                component="label"
+                startIcon={<UploadIcon />}
+              >
+                Upload CSV File
+                <input type="file" hidden accept=".csv" onChange={(e) => handleFileChange(e, 'csv')} />
+              </Button>
+
+              <Button
+                variant="text"
+                size="small"
+                startIcon={<InfoIcon />}
+                onClick={handleDownloadTemplate}
+              >
+                Download Template
+              </Button>
+            </Box>
+
+            {csvFile && <Typography variant="body2" color="success.main">✅ CSV: {csvFile.name}</Typography>}
+
+            <Alert severity="info" icon={<InfoIcon />} sx={{ mt: 1 }}>
+              <Typography variant="body2">
+                <strong>CSV Format Guidelines:</strong>
+              </Typography>
+              <Typography variant="caption" component="div">
+                • Required: <code>user_id</code> OR <code>username</code> column<br />
+                • <strong>Recommended</strong>: Use <code>user_id</code> (numeric) - more reliable than usernames<br />
+                • Optional: <code>first_name</code>, <code>notes</code> for your reference<br />
+                • If both columns present, <code>user_id</code> takes priority
+              </Typography>
+            </Alert>
 
             <Button
               variant="outlined"
@@ -216,54 +253,21 @@ export default function MassDM() {
             />
 
             <Box sx={{ display: 'flex', gap: 2 }}>
-                <TextField
-                  fullWidth
-                  label="Rate Limit (msg/hr)"
-                  type="number"
-                  placeholder="e.g., 20"
-                  value={formData.rate_limit_per_hour}
-                  onChange={(e) => setFormData({ ...formData, rate_limit_per_hour: e.target.value })}
-                />
-            </Box>
-
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <FormControlLabel
-                control={<Radio checked={formData.use_random_interval} onChange={() => setFormData({ ...formData, use_random_interval: true })} />}
-                label="Random Interval"
-              />
-              <FormControlLabel
-                control={<Radio checked={!formData.use_random_interval} onChange={() => setFormData({ ...formData, use_random_interval: false })} />}
-                label="Fixed Delay"
-              />
-            </Box>
-
-            {formData.use_random_interval ? (
-              <Box sx={{ display: 'flex', gap: 2 }}>
-                <TextField
-                  fullWidth
-                  label="Min Delay (s)"
-                  type="number"
-                  value={formData.min_delay_seconds}
-                  onChange={(e) => setFormData({ ...formData, min_delay_seconds: e.target.value })}
-                />
-                <TextField
-                  fullWidth
-                  label="Max Delay (s)"
-                  type="number"
-                  value={formData.max_delay_seconds}
-                  onChange={(e) => setFormData({ ...formData, max_delay_seconds: e.target.value })}
-                />
-              </Box>
-            ) : (
               <TextField
                 fullWidth
-                label="Delay (seconds)"
+                label="Rate Limit (msg/hr)"
                 type="number"
-                placeholder="e.g., 60"
-                value={formData.delay_seconds}
-                onChange={(e) => setFormData({ ...formData, delay_seconds: e.target.value })}
+                placeholder="e.g., 20"
+                value={formData.rate_limit_per_hour}
+                onChange={(e) => setFormData({ ...formData, rate_limit_per_hour: e.target.value })}
               />
-            )}
+            </Box>
+
+            <Alert severity="info" icon={<InfoIcon />}>
+              <Typography variant="body2">
+                <strong>Message Pacing:</strong> Delays and timing are automatically controlled by backend safety logic and account-level settings (sleep hours, daily limits). No manual delay configuration needed.
+              </Typography>
+            </Alert>
 
             <Button
               variant="contained"

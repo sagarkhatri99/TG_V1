@@ -24,7 +24,7 @@ export default function AutoPromo() {
   const [alert, setAlert] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   const [accounts, setAccounts] = useState<TelegramAccount[]>([]);
   const [imageFile, setImageFile] = useState<File | null>(null);
-  
+
   const [formData, setFormData] = useState({
     account_id: '',
     target_group: '',
@@ -42,7 +42,7 @@ export default function AutoPromo() {
     const fetchAccounts = async () => {
       try {
         const response = await api.get(endpoints.accounts.list);
-        setAccounts(response.data.accounts);
+        setAccounts(response.data || []);
       } catch (error) {
         setAlert({ type: 'error', message: 'Failed to fetch accounts.' });
       }
@@ -69,10 +69,10 @@ export default function AutoPromo() {
     }
     apiFormData.append('use_random_interval', String(formData.use_random_interval));
     if (formData.use_random_interval) {
-        apiFormData.append('min_interval', formData.min_interval);
-        apiFormData.append('max_interval', formData.max_interval);
+      apiFormData.append('min_interval', formData.min_interval);
+      apiFormData.append('max_interval', formData.max_interval);
     } else {
-        apiFormData.append('interval_seconds', formData.interval_seconds);
+      apiFormData.append('interval_seconds', formData.interval_seconds);
     }
     if (formData.stop_after_hours) {
       apiFormData.append('stop_after_hours', formData.stop_after_hours);
@@ -143,6 +143,7 @@ export default function AutoPromo() {
                 sx={{ mb: 2 }}
               />
             </Box>
+
             <Box>
               <TextField
                 fullWidth
@@ -216,12 +217,12 @@ export default function AutoPromo() {
             )}
 
             <TextField
-                fullWidth
-                label="Rate Limit (msg/hr)"
-                type="number"
-                placeholder="e.g., 20"
-                value={formData.rate_limit_per_hour}
-                onChange={(e) => setFormData({ ...formData, rate_limit_per_hour: e.target.value })}
+              fullWidth
+              label="Rate Limit (msg/hr)"
+              type="number"
+              placeholder="e.g., 20"
+              value={formData.rate_limit_per_hour}
+              onChange={(e) => setFormData({ ...formData, rate_limit_per_hour: e.target.value })}
             />
 
             <Box>

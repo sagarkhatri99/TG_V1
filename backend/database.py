@@ -4,10 +4,11 @@ from sqlalchemy.orm import sessionmaker
 import os
 
 # Database URL - you can change this to your preferred database
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./tg_tools.db")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5432/tg_tools")
 
 engine = create_engine(
     DATABASE_URL,
+    pool_pre_ping=True,
     connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {}
 )
 

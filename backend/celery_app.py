@@ -1,4 +1,5 @@
 from celery import Celery
+from celery.schedules import crontab
 import os
 
 # Set the default Django settings module for the 'celery' program.
@@ -15,8 +16,12 @@ celery_app = Celery(
         'mass_dm_bot.tasks',
         'scrape_user_id.tasks',
         'core.cleanup_tasks',
+        'tasks.maintenance_tasks',  # Daily health reset and cleanup
+        'tasks.campaign_tasks',
     ]
 )
+
+from kombu import Queue
 
 celery_app.conf.update(
     task_track_started=True,
@@ -28,11 +33,23 @@ celery_app.conf.update(
     enable_utc=True,
     worker_prefetch_multiplier=1,
     task_acks_late=True,
-    worker_max_tasks_per_child=1000,
+    worker_max_tasks_per_child=100,  # Faster worker recycling
     task_soft_time_limit=3600,  # 1 hour soft limit
     task_time_limit=7200,       # 2 hour hard limit
     worker_log_format='[%(asctime)s: %(levelname)s/%(processName)s] %(message)s',
     worker_task_log_format='[%(asctime)s: %(levelname)s/%(processName)s][%(task_name)s(%(task_id)s)] %(message)s',
+    task_queues=(
+        Queue('campaign_high', routing_key='campaign_high', priority=10),
+        Queue('campaign_medium', routing_key='campaign_medium', priority=7),
+        Queue('campaign_low', routing_key='campaign_low', priority=5),
+        Queue('listeners', routing_key='listeners', priority=6),  # Dedicated queue for reply listeners
+        Queue('default', routing_key='task.#', priority=5),
+        Queue('long_tasks', routing_key='long.#', priority=3),
+        Queue('short_tasks', routing_key='short.#', priority=8),
+        Queue('celery', routing_key='celery.#', priority=5),
+    ),
+    task_queue_max_priority=10,
+    task_default_priority=5,
     beat_schedule={
         'cleanup-stuck-jobs': {
             'task': 'core.cleanup_tasks.cleanup_stuck_jobs',
@@ -42,6 +59,19 @@ celery_app.conf.update(
             'task': 'core.cleanup_tasks.worker_health_check',
             'schedule': 600.0,  # Run every 10 minutes
         },
+        'reset-daily-health-midnight': {
+            'task': 'reset_daily_health_counters',
+            'schedule': crontab(hour=0, minute=0),  # Every day at 00:00 UTC
+        },
+        'cleanup-error-history-weekly': {
+            'task': 'cleanup_old_error_history',
+            'schedule': crontab(hour=2, minute=0, day_of_week=0),  # Every Sunday at 02:00 UTC
+        },
+        'start-reply-listener-pool': {
+            'task': 'tasks.campaign_tasks.start_reply_listener',
+            'schedule': 60.0,  # Check if listener is running every 60 seconds
+            'options': {'queue': 'listeners'},  # Explicit queue routing
+        },
     },
     task_routes={
         'auto_promo.tasks.auto_promo_task': {'queue': 'long_tasks'},
@@ -49,7 +79,15 @@ celery_app.conf.update(
         'mass_dm_account.tasks.mass_dm_account_task': {'queue': 'long_tasks'},
         'mass_dm_bot.tasks.mass_dm_bot_task': {'queue': 'long_tasks'},
         'scrape_user_id.tasks.scrape_users_task': {'queue': 'short_tasks'},
-        'core.cleanup_tasks.*': {'queue': 'celery'},  # Default queue for cleanup tasks
+        'core.cleanup_tasks.*': {'queue': 'celery'},
+        # Campaign tasks - explicit routing to campaign_high
+        'tasks.campaign_tasks.initialize_campaign': {'queue': 'campaign_high'},
+        'tasks.campaign_tasks.send_message_1': {'queue': 'campaign_high'},
+        'tasks.campaign_tasks.send_message_2': {'queue': 'campaign_high'},
+        'tasks.campaign_tasks.send_message_3': {'queue': 'campaign_high'},
+        'tasks.campaign_tasks.process_reply': {'queue': 'campaign_high'},
+        # Reply listeners - separate queue to prevent blocking campaigns
+        'tasks.campaign_tasks.start_reply_listener': {'queue': 'listeners'},
     },
 )
 

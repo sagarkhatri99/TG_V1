@@ -23,11 +23,15 @@ class SessionManager:
         # Cache active clients per account id
         self.active_clients: Dict[int, TelegramClient] = {}
 
-    async def get_client(self, account: TelegramAccount) -> TelegramClient:
+    async def get_client(self, account: TelegramAccount, allow_unauth: bool = False) -> TelegramClient:
         """Return a connected TelegramClient using a DB-backed StringSession.
         If client is not cached, create it. Ensure it's connected before returning.
         
-        CRITICAL: Will raise RuntimeError if session is not authenticated.
+        Args:
+            account: TelegramAccount instance
+            allow_unauth: If True, skip authorization check (for initial verification flow)
+
+        CRITICAL: Will raise RuntimeError if session is not authenticated (unless allow_unauth=True).
         """
         if account.id not in self.active_clients:
             self.active_clients[account.id] = await self._create_client(account)
@@ -39,28 +43,33 @@ class SessionManager:
                 await client.connect()
             except (EOFError, OSError) as e:
                 # EOFError means Telethon is trying to read from stdin (unauthenticated session)
-                raise RuntimeError(
-                    f"Cannot connect to Telegram for account {account.id}. "
-                    f"The account session is not authenticated. "
-                    f"Please log in first via the frontend. Error: {e}"
-                )
+                # Only raise if we require authentication
+                if not allow_unauth:
+                    raise RuntimeError(
+                        f"Cannot connect to Telegram for account {account.id}. "
+                        f"The account session is not authenticated. "
+                        f"Please log in first via the frontend. Error: {e}"
+                    )
+                # For unauth flow, just log and continue
+                logger.info(f"Account {account.id} connecting for initial verification")
         
-        # Verify client is authenticated
-        try:
-            if not await client.is_user_authorized():
-                raise RuntimeError(
-                    f"Account {account.id} is not authorized. "
-                    f"Please log in first via the frontend."
-                )
-        except Exception as auth_check_err:
-            logger.warning(f"Could not verify auth status for account {account.id}: {auth_check_err}")
+        # Verify client is authenticated (skip if allow_unauth)
+        if not allow_unauth:
+            try:
+                if not await client.is_user_authorized():
+                    raise RuntimeError(
+                        f"Account {account.id} is not authorized. "
+                        f"Please log in first via the frontend."
+                    )
+            except Exception as auth_check_err:
+                logger.warning(f"Could not verify auth status for account {account.id}: {auth_check_err}")
         
         return client
 
     async def _create_client(self, account: TelegramAccount) -> TelegramClient:
         """Create a new TelegramClient bound to a StringSession from DB."""
         # Build proxy dictionary if present, with strict error handling.
-        # Build proxy dictionary if present, with strict error handling.
+        proxy_details = None
         # 1. Try to get proxy object
         proxy_obj = None
         if getattr(account, "proxy", None):
@@ -104,17 +113,30 @@ class SessionManager:
             logger.error(error_msg)
             raise RuntimeError(error_msg)
 
-        # Use DB-backed StringSession; None creates an empty session to be authenticated later
+
+        # Use DB-backed StringSession OR file-based session
         session_string = getattr(account, "session_string", None)
-        if session_string and "<telethon.sessions" not in session_string and len(session_string) > 10:
+
+        # Check if this is a file-based session (imported account)
+        session_file_path = os.path.join(self.session_folder, f"{session_string}.session")
+
+        if session_string and os.path.exists(session_file_path):
+            # Use file-based session (imported accounts)
+            logger.info(f"Using file-based session for account {account.id}: {session_file_path}")
+            sess = session_file_path.replace('.session', '')  # Telethon adds .session automatically
+        elif session_string and "<telethon.sessions" not in session_string and len(session_string) > 10:
+            # Use StringSession (manually added accounts)
             try:
                 sess = StringSession(session_string)
+                logger.info(f"Using StringSession for account {account.id}")
             except Exception as e:
                 logger.warning(f"Invalid session string for account {account.id}, starting fresh: {e}")
                 sess = StringSession()
         else:
-            logger.info(f"No valid session string for account {account.id}, starting fresh")
+            logger.info(f"No valid session for account {account.id}, starting fresh")
             sess = StringSession()
+
+
 
         client = TelegramClient(
             sess,

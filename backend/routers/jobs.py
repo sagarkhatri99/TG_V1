@@ -398,3 +398,29 @@ async def download_job_reports(
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+
+@router.get("/mass-dm-template/download")
+async def download_mass_dm_template(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Download a sample CSV template for Mass DM.
+
+    Template includes examples for both user_id and username columns.
+    Demonstrates that user_id is prioritized if both columns are present.
+    """
+    csv_content = """user_id,username,first_name,notes
+1234567890,john_doe,John,Example with User ID
+,jane_smith,Jane,Example with username only
+9876543210,alice_example,Alice,Both ID and username (ID will be used)
+5555555555,,Bob,User ID only (most reliable method)
+"""
+
+    return StreamingResponse(
+        iter([csv_content]),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": "attachment; filename=mass_dm_template.csv"
+        }
+    )

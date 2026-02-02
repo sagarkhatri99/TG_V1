@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from models import Job, TelegramAccount
 from database import SessionLocal
 from core.session_manager import session_manager
+from core.human_aware_task import HumanAwareTask
 import json
 import logging
 import random
@@ -11,6 +12,7 @@ from datetime import datetime, timedelta
 import asyncio
 import os
 from telethon.errors import FloodWaitError, ChatWriteForbiddenError
+from utils.template_processor import process_template_variations
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +23,7 @@ async def _auto_promo_runner(job: Job, db: Session):
 
     config = json.loads(job.config)
     target_group = config.get('target_group')
-    promo_message = config.get('promo_message')
+    promo_message = process_template_variations(config.get('promo_message', ''))
     image_file_path = config.get('image_file_path')
     rate_limit_per_hour = config.get('rate_limit_per_hour')
     interval_seconds = config.get('interval_seconds', 3600)
@@ -134,7 +136,7 @@ async def _auto_promo_runner(job: Job, db: Session):
             logger.info(f"Job {job.id} sleeping for {sleep_time} seconds.")
             await asyncio.sleep(sleep_time)
 
-@celery_app.task(bind=True, max_retries=3)
+@celery_app.task(base=HumanAwareTask, bind=True, max_retries=3)
 def auto_promo_task(self, job_id: int):
     db: Session = SessionLocal()
     job = db.query(Job).filter(Job.id == job_id).first()

@@ -28,14 +28,14 @@ import type { SystemStats, TelegramAccount } from '../Types/Index';
 
 
 export default function Dashboard() {
-const [stats, setStats] = useState<SystemStats | null>(null);
-  const [meStats, setMeStats] = useState<{active_accounts:number; active_sessions:number} | null>(null);
+  const [stats, setStats] = useState<SystemStats | null>(null);
+  const [meStats, setMeStats] = useState<{ active_accounts: number; active_sessions: number } | null>(null);
   const [accounts, setAccounts] = useState<TelegramAccount[]>([]);
   const [loading, setLoading] = useState(true);
 
 
   useEffect(() => {
-const fetchData = async () => {
+    const fetchData = async () => {
       try {
         const [statsResponse, accountsResponse, meStatsResponse] = await Promise.all([
           api.get(endpoints.stats),
@@ -106,7 +106,7 @@ const fetchData = async () => {
                     Active Accounts
                   </Typography>
                   <Typography variant="h4">
-{meStats?.active_accounts ?? accounts.filter(a => a.status === 'active').length}
+                    {meStats?.active_accounts ?? accounts.filter(a => a.status === 'active').length}
                   </Typography>
                 </Box>
                 <AccountCircle color="primary" />
@@ -124,7 +124,7 @@ const fetchData = async () => {
                     Active Sessions
                   </Typography>
                   <Typography variant="h4">
-{meStats?.active_sessions ?? 0}
+                    {meStats?.active_sessions ?? 0}
                   </Typography>
                 </Box>
                 <TrendingUp color="secondary" />
@@ -204,11 +204,11 @@ const fetchData = async () => {
               {stats?.safety_features && Object.entries(stats.safety_features).map(([key, value]) => (
                 <ListItem key={key}>
                   <ListItemIcon>
-                    <CheckCircle color={value === 'active' ? 'success' : 'action'} />
+                    <CheckCircle color={value ? 'success' : 'action'} />
                   </ListItemIcon>
                   <ListItemText
                     primary={key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                    secondary={String(value)}
+                    secondary={value ? 'Active' : 'Inactive'}
                   />
                 </ListItem>
               ))}

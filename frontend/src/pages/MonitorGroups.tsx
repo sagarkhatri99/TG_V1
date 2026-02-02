@@ -40,7 +40,7 @@ export default function MonitorGroups() {
     const fetchAccounts = async () => {
       try {
         const response = await api.get(endpoints.accounts.list);
-        setAccounts(response.data.accounts);
+        setAccounts(response.data || []);
       } catch (error) {
         setAlert({ type: 'error', message: 'Failed to fetch accounts.' });
       }
