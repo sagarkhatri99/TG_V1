@@ -17,8 +17,7 @@ import {
 } from '@mui/material';
 import { Campaign as CampaignIcon, Upload as UploadIcon } from '@mui/icons-material';
 import api, { endpoints } from '../api/Index';
-import type { TelegramAccount, MessageTemplate } from '../Types/Index';
-import { TemplateSelector } from '../components/shared/TemplateSelector';
+import type { TelegramAccount } from '../Types/Index';
 
 export default function AutoPromo() {
   const [loading, setLoading] = useState(false);
@@ -38,8 +37,6 @@ export default function AutoPromo() {
     stop_after_hours: '',
     rate_limit_per_hour: '20',
   });
-
-  const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
 
   useEffect(() => {
     const fetchAccounts = async () => {
@@ -146,15 +143,6 @@ export default function AutoPromo() {
                 sx={{ mb: 2 }}
               />
             </Box>
-            <TemplateSelector
-              value={selectedTemplateId}
-              onChange={(template: MessageTemplate | null) => {
-                setSelectedTemplateId(template?.id || null);
-                if (template) {
-                  setFormData({ ...formData, promo_message: template.content });
-                }
-              }}
-            />
 
             <Box>
               <TextField

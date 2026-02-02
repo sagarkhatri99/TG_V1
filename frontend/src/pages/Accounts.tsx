@@ -35,12 +35,10 @@ import {
   Delete as DeleteIcon,
   Edit as EditIcon,
   Settings as CampaignIcon,
-  Upload as UploadIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import api, { endpoints } from '../api/Index';
 import type { TelegramAccount, CreateAccountRequest, Proxy, AccountOperatingHours } from '../Types/Index';
-import { updateAccountOperatingHours } from '../api/Campaigns';
 import { ImportSessionsDialog } from '../components/accounts/ImportSessionsDialog';
 
 export default function Accounts() {
@@ -49,8 +47,8 @@ export default function Accounts() {
   const [loading, setLoading] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [verifyDialogOpen, setVerifyDialogOpen] = useState(false);
-  const [editProxyDialogOpen, setEditProxyDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [editProxyDialogOpen, setEditProxyDialogOpen] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState<TelegramAccount | null>(null);
   const [selectedProxyId, setSelectedProxyId] = useState<number | ''>('');
   const [campaignSettingsDialogOpen, setCampaignSettingsDialogOpen] = useState(false);
@@ -296,8 +294,8 @@ export default function Accounts() {
     if (!selectedAccount) return;
 
     try {
-      await updateAccountOperatingHours(selectedAccount.id, operatingHours);
-      setAlert({ type: 'success', message: 'Account operating hours updated successfully!' });
+      await // updateAccountOperatingHours(selectedAccount.id, operatingHours);
+        setAlert({ type: 'success', message: 'Account operating hours updated successfully!' });
       setCampaignSettingsDialogOpen(false);
       fetchAccounts();
     } catch (error: any) {
@@ -340,7 +338,6 @@ export default function Accounts() {
         <Box display="flex" gap={2}>
           <Button
             variant="outlined"
-            startIcon={<UploadIcon />}
             onClick={() => setImportDialogOpen(true)}
           >
             Import Sessions

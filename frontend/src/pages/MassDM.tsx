@@ -18,8 +18,7 @@ import {
 } from '@mui/material';
 import { Send as SendIcon, Upload as UploadIcon, Info as InfoIcon } from '@mui/icons-material';
 import api from '../api/Index';
-import type { TelegramAccount, MessageTemplate } from '../Types/Index';
-import { TemplateSelector } from '../components/shared/TemplateSelector';
+import type { TelegramAccount } from '../Types/Index';
 
 type DmMethod = 'account' | 'bot';
 
@@ -43,8 +42,6 @@ export default function MassDM() {
     min_delay_seconds: '30',
     max_delay_seconds: '120',
   });
-
-  const [selectedTemplateId, setSelectedTemplateId] = useState<number | null>(null);
 
   useEffect(() => {
     if (dmMethod === 'account') {
@@ -191,16 +188,6 @@ export default function MassDM() {
                 onChange={(e) => setFormData({ ...formData, bot_token: e.target.value })}
               />
             )}
-
-            <TemplateSelector
-              value={selectedTemplateId}
-              onChange={(template: MessageTemplate | null) => {
-                setSelectedTemplateId(template?.id || null);
-                if (template) {
-                  setFormData({ ...formData, message: template.content });
-                }
-              }}
-            />
 
             <TextField
               fullWidth

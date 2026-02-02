@@ -142,3 +142,17 @@ export interface SystemStats {
   };
 }
 
+export type Template = MessageTemplate;
+
+export interface TemplateCreate {
+  name: string;
+  content: string;
+  category?: string;
+}
+
+export interface StartCampaignResponse {
+  message: string;
+  job_id: number;
+  task_id: string;
+  status: string;
+}
