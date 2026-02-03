@@ -16,7 +16,7 @@ import {
   MenuItem,
 } from '@mui/material';
 import { Campaign as CampaignIcon, Upload as UploadIcon } from '@mui/icons-material';
-import api, { endpoints } from '../api/Index';
+import api from '../api/Index';
 import type { TelegramAccount } from '../Types/Index';
 
 export default function AutoPromo() {
@@ -41,10 +41,15 @@ export default function AutoPromo() {
   useEffect(() => {
     const fetchAccounts = async () => {
       try {
-        const response = await api.get(endpoints.accounts.list);
-        setAccounts(response.data.accounts);
+        const response = await api.get('/api/accounts/list');
+        const activeAccounts = (response.data || []).filter(
+          (acc: any) => acc.status === 'active'
+        );
+        setAccounts(activeAccounts);
       } catch (error) {
+        console.error('Failed to fetch accounts:', error);
         setAlert({ type: 'error', message: 'Failed to fetch accounts.' });
+        setAccounts([]);
       }
     };
     fetchAccounts();

@@ -7,7 +7,6 @@ import type { Template } from '../../Types/Index';
 interface TemplateSelectorProps {
   value?: number | null;
   onChange: (template: Template | null) => void;
-  category?: string;
 }
 
 export const TemplateSelector: React.FC<TemplateSelectorProps> = ({

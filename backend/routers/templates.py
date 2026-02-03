@@ -76,8 +76,7 @@ async def create_template(
         category=template_data.category,
         spam_risk_score=spam_score,
         variables=variables,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow()
+        created_at=datetime.utcnow()
     )
     
     db.add(new_template)
