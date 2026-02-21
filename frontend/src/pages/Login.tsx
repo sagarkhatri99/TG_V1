@@ -3,6 +3,7 @@ import { Container, TextField, Button, Typography, Box, Link } from '@mui/materi
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import api from '../api/Index';
 
 const LoginPage: React.FC = () => {
     const [email, setEmail] = useState('');
@@ -18,7 +19,7 @@ const LoginPage: React.FC = () => {
         console.log('Login attempt:', email);
 
         try {
-            const response = await axios.post('http://localhost:8000/api/auth/login', {
+            const response = await api.post('/api/auth/login', {
                 username: email,
                 password: password,
             });
