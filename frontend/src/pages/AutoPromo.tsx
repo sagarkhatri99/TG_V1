@@ -15,14 +15,17 @@ import {
   Select,
   MenuItem,
 } from '@mui/material';
-import { Campaign as CampaignIcon, Upload as UploadIcon } from '@mui/icons-material';
+import { Campaign as CampaignIcon, Upload as UploadIcon, Refresh as RefreshIcon } from '@mui/icons-material';
 import api from '../api/Index';
-import type { TelegramAccount } from '../Types/Index';
+import type { TelegramAccount, Template } from '../Types/Index';
 
 export default function AutoPromo() {
   const [loading, setLoading] = useState(false);
   const [alert, setAlert] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   const [accounts, setAccounts] = useState<TelegramAccount[]>([]);
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<number | ''>('');
+  const [previewMessages, setPreviewMessages] = useState<string[]>([]);
   const [imageFile, setImageFile] = useState<File | null>(null);
 
   const [formData, setFormData] = useState({
@@ -39,21 +42,55 @@ export default function AutoPromo() {
   });
 
   useEffect(() => {
-    const fetchAccounts = async () => {
-      try {
-        const response = await api.get('/api/accounts/list');
-        const activeAccounts = (response.data || []).filter(
-          (acc: any) => acc.status === 'active'
-        );
-        setAccounts(activeAccounts);
-      } catch (error) {
-        console.error('Failed to fetch accounts:', error);
-        setAlert({ type: 'error', message: 'Failed to fetch accounts.' });
-        setAccounts([]);
-      }
-    };
     fetchAccounts();
+    fetchTemplates();
   }, []);
+
+  const fetchAccounts = async () => {
+    try {
+      const response = await api.get('/api/accounts/list');
+      const activeAccounts = (response.data || []).filter(
+        (acc: any) => acc.status === 'active'
+      );
+      setAccounts(activeAccounts);
+    } catch (error) {
+      console.error('Failed to fetch accounts:', error);
+      setAlert({ type: 'error', message: 'Failed to fetch accounts.' });
+      setAccounts([]);
+    }
+  };
+
+  const fetchTemplates = async () => {
+    try {
+      const response = await api.get('/api/templates');
+      setTemplates(response.data || []);
+    } catch (error) {
+      console.error('Failed to fetch templates:', error);
+    }
+  };
+
+  const handleTemplateSelect = async (templateId: number | '') => {
+    setSelectedTemplateId(templateId);
+
+    if (templateId === '') {
+      setPreviewMessages([]);
+      return;
+    }
+
+    try {
+      const response = await api.get(`/api/templates/${templateId}/preview?count=3`);
+      setPreviewMessages(response.data.samples || []);
+    } catch (error) {
+      console.error('Failed to fetch preview:', error);
+      setAlert({ type: 'error', message: 'Failed to generate preview messages' });
+    }
+  };
+
+  const refreshPreview = async () => {
+    if (selectedTemplateId) {
+      handleTemplateSelect(selectedTemplateId);
+    }
+  };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files) {
@@ -68,7 +105,13 @@ export default function AutoPromo() {
     const apiFormData = new FormData();
     apiFormData.append('account_id', formData.account_id);
     apiFormData.append('target_group', formData.target_group);
-    apiFormData.append('promo_message', formData.promo_message);
+
+    // Add template_id or manual promo_message
+    if (selectedTemplateId) {
+      apiFormData.append('template_id', selectedTemplateId.toString());
+    } else if (formData.promo_message) {
+      apiFormData.append('promo_message', formData.promo_message);
+    }
     if (formData.user_description) {
       apiFormData.append('user_description', formData.user_description);
     }
@@ -149,17 +192,54 @@ export default function AutoPromo() {
               />
             </Box>
 
+            <FormControl fullWidth>
+              <InputLabel id="template-select-label">Message Template (Optional)</InputLabel>
+              <Select
+                labelId="template-select-label"
+                value={selectedTemplateId}
+                label="Message Template (Optional)"
+                onChange={(e) => handleTemplateSelect(e.target.value as number | '')}
+              >
+                <MenuItem value="">Manual Message (No Template)</MenuItem>
+                {templates.map((template) => (
+                  <MenuItem key={template.id} value={template.id}>
+                    {template.name} ({template.category})
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            {selectedTemplateId && previewMessages.length > 0 && (
+              <Alert severity="info">
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                  <Typography variant="subtitle2">Sample Generated Messages:</Typography>
+                  <Button size="small" startIcon={<RefreshIcon />} onClick={refreshPreview}>
+                    Regenerate
+                  </Button>
+                </Box>
+                {previewMessages.map((msg, idx) => (
+                  <Box key={idx} sx={{ mb: 1, p: 1, bgcolor: 'background.paper', borderRadius: 1 }}>
+                    <Typography variant="body2" sx={{ fontStyle: 'italic' }}>
+                      "{msg}"
+                    </Typography>
+                  </Box>
+                ))}
+              </Alert>
+            )}
+
             <Box>
-              <TextField
-                fullWidth
-                multiline
-                rows={4}
-                label="Promotional Message"
-                placeholder="Your promotional message here..."
-                value={formData.promo_message}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, promo_message: e.target.value })}
-                sx={{ mb: 2 }}
-              />
+              {!selectedTemplateId && (
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={4}
+                  label="Promotional Message"
+                  placeholder="Your promotional message here..."
+                  value={formData.promo_message}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, promo_message: e.target.value })}
+                  sx={{ mb: 2 }}
+                />
+              )}
               <TextField
                 fullWidth
                 label="Campaign Description (Optional)"
@@ -246,7 +326,7 @@ export default function AutoPromo() {
                 variant="contained"
                 startIcon={<CampaignIcon />}
                 onClick={handleCreateJob}
-                disabled={loading || !formData.account_id || !formData.target_group || !formData.promo_message}
+                disabled={loading || !formData.account_id || !formData.target_group || (!formData.promo_message && !selectedTemplateId)}
                 fullWidth
               >
                 {loading ? <CircularProgress size={24} /> : 'Create Auto Promo Job'}

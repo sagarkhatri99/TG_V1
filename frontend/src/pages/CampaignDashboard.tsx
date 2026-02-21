@@ -41,7 +41,7 @@ export default function CampaignDashboard() {
     setError(null);
     try {
       const response = await api.get('/api/campaigns/');
-      setCampaigns(response.data || []);
+      setCampaigns(response.data.campaigns || []); // Backend returns {campaigns: [...]}
     } catch (error: any) {
       console.error('Failed to fetch campaigns:', error);
       const errorMsg = error.response?.data?.detail || 'Failed to fetch campaigns';

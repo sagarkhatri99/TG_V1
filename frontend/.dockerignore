@@ -1,5 +1,39 @@
-node_modules
-dist
+# Dependencies
+node_modules/
+
+# Build output (not needed in build context - nginx copies from build stage)
+dist/
+
+# Environment files
 .env
+.env.*
+.env.local
+.env.production
+.env.development
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS / Editor artifacts
 .DS_Store
-npm-debug.log
+Thumbs.db
+*.swp
+*.swo
+
+# Test / coverage
+coverage/
+.nyc_output/
+
+# Cache directories
+.cache/
+.vite/
+
+# Git metadata
+.git/
+.gitignore
+
+# TypeScript build info
+*.tsbuildinfo

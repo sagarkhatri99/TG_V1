@@ -16,9 +16,9 @@ import {
   FormControlLabel,
   Radio,
 } from '@mui/material';
-import { Send as SendIcon, Upload as UploadIcon, Info as InfoIcon } from '@mui/icons-material';
+import { Send as SendIcon, Upload as UploadIcon, Info as InfoIcon, Refresh as RefreshIcon } from '@mui/icons-material';
 import api from '../api/Index';
-import type { TelegramAccount } from '../Types/Index';
+import type { TelegramAccount, Template } from '../Types/Index';
 
 type DmMethod = 'account' | 'bot';
 
@@ -26,6 +26,9 @@ export default function MassDM() {
   const [loading, setLoading] = useState(false);
   const [alert, setAlert] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   const [accounts, setAccounts] = useState<TelegramAccount[]>([]);
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<number | ''>('');
+  const [previewMessages, setPreviewMessages] = useState<string[]>([]);
   const [dmMethod, setDmMethod] = useState<DmMethod>('account');
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -38,6 +41,10 @@ export default function MassDM() {
     stop_after_hours: '',
     rate_limit_per_hour: '20',
   });
+
+  useEffect(() => {
+    fetchTemplates();
+  }, []);
 
   useEffect(() => {
     if (dmMethod === 'account') {
@@ -55,6 +62,38 @@ export default function MassDM() {
       fetchAccounts();
     }
   }, [dmMethod]);
+
+  const fetchTemplates = async () => {
+    try {
+      const response = await api.get('/api/templates');
+      setTemplates(response.data || []);
+    } catch (error) {
+      console.error('Failed to fetch templates:', error);
+    }
+  };
+
+  const handleTemplateSelect = async (templateId: number | '') => {
+    setSelectedTemplateId(templateId);
+
+    if (templateId === '') {
+      setPreviewMessages([]);
+      return;
+    }
+
+    try {
+      const response = await api.get(`/api/templates/${templateId}/preview?count=3`);
+      setPreviewMessages(response.data.samples || []);
+    } catch (error) {
+      console.error('Failed to fetch preview:', error);
+      setAlert({ type: 'error', message: 'Failed to generate preview messages' });
+    }
+  };
+
+  const refreshPreview = async () => {
+    if (selectedTemplateId) {
+      handleTemplateSelect(selectedTemplateId);
+    }
+  };
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>, fileType: 'csv' | 'image') => {
     if (event.target.files) {
@@ -96,7 +135,14 @@ export default function MassDM() {
     setAlert(null);
 
     const apiFormData = new FormData();
-    apiFormData.append('message', formData.message);
+
+    // Add template_id or manual message
+    if (selectedTemplateId) {
+      apiFormData.append('template_id', selectedTemplateId.toString());
+    } else if (formData.message) {
+      apiFormData.append('message', formData.message);
+    }
+
     if (formData.user_description) {
       apiFormData.append('user_description', formData.user_description);
     }
@@ -182,14 +228,51 @@ export default function MassDM() {
               />
             )}
 
-            <TextField
-              fullWidth
-              multiline
-              rows={4}
-              label="Message"
-              value={formData.message}
-              onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-            />
+            <FormControl fullWidth>
+              <InputLabel id="template-select-label">Message Template (Optional)</InputLabel>
+              <Select
+                labelId="template-select-label"
+                value={selectedTemplateId}
+                label="Message Template (Optional)"
+                onChange={(e) => handleTemplateSelect(e.target.value as number | '')}
+              >
+                <MenuItem value="">Manual Message (No Template)</MenuItem>
+                {templates.map((template) => (
+                  <MenuItem key={template.id} value={template.id}>
+                    {template.name} ({template.category})
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            {selectedTemplateId && previewMessages.length > 0 && (
+              <Alert severity="info" sx={{ mt: 1 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                  <Typography variant="subtitle2">Sample Generated Messages:</Typography>
+                  <Button size="small" startIcon={<RefreshIcon />} onClick={refreshPreview}>
+                    Regenerate
+                  </Button>
+                </Box>
+                {previewMessages.map((msg, idx) => (
+                  <Box key={idx} sx={{ mb: 1, p: 1, bgcolor: 'background.paper', borderRadius: 1 }}>
+                    <Typography variant="body2" sx={{ fontStyle: 'italic' }}>
+                      "{msg}"
+                    </Typography>
+                  </Box>
+                ))}
+              </Alert>
+            )}
+
+            {!selectedTemplateId && (
+              <TextField
+                fullWidth
+                multiline
+                rows={4}
+                label="Message"
+                value={formData.message}
+                onChange={(e) => setFormData({ ...formData, message: e.target.value })}
+              />
+            )}
 
             <TextField
               fullWidth
@@ -273,7 +356,7 @@ export default function MassDM() {
               variant="contained"
               startIcon={<SendIcon />}
               onClick={handleCreateJob}
-              disabled={loading || (dmMethod === 'account' && !formData.account_id) || (dmMethod === 'bot' && !formData.bot_token) || !formData.message || !csvFile}
+              disabled={loading || (dmMethod === 'account' && !formData.account_id) || (dmMethod === 'bot' && !formData.bot_token) || (!formData.message && !selectedTemplateId) || !csvFile}
               fullWidth
             >
               {loading ? <CircularProgress size={24} /> : 'Create Mass DM Job'}

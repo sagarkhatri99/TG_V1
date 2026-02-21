@@ -1,0 +1,30 @@
+                                             Table "public.telegram_accounts"
+       Column        |            Type             | Collation | Nullable |                    Default                    
+---------------------+-----------------------------+-----------+----------+-----------------------------------------------
+ id                  | integer                     |           | not null | nextval('telegram_accounts_id_seq'::regclass)
+ user_id             | integer                     |           |          | 
+ nickname            | character varying(100)      |           |          | 
+ phone_number        | character varying(20)       |           |          | 
+ api_id              | character varying(50)       |           |          | 
+ api_hash            | character varying(255)      |           |          | 
+ session_string      | text                        |           |          | 
+ proxy_id            | integer                     |           |          | 
+ status              | character varying(20)       |           |          | 
+ trust_score         | integer                     |           |          | 
+ last_activity       | timestamp without time zone |           |          | 
+ daily_message_count | integer                     |           |          | 
+ ban_risk_score      | double precision            |           |          | 
+ created_at          | timestamp without time zone |           |          | 
+Indexes:
+    "telegram_accounts_pkey" PRIMARY KEY, btree (id)
+    "ix_telegram_accounts_id" btree (id)
+    "telegram_accounts_phone_number_key" UNIQUE CONSTRAINT, btree (phone_number)
+Foreign-key constraints:
+    "telegram_accounts_proxy_id_fkey" FOREIGN KEY (proxy_id) REFERENCES proxies(id)
+    "telegram_accounts_user_id_fkey" FOREIGN KEY (user_id) REFERENCES users(id)
+Referenced by:
+    TABLE "proxies" CONSTRAINT "fk_proxies_assigned_account" FOREIGN KEY (assigned_account_id) REFERENCES telegram_accounts(id) ON DELETE SET NULL
+    TABLE "jobs" CONSTRAINT "jobs_telegram_account_id_fkey" FOREIGN KEY (telegram_account_id) REFERENCES telegram_accounts(id)
+    TABLE "message_logs" CONSTRAINT "message_logs_telegram_account_id_fkey" FOREIGN KEY (telegram_account_id) REFERENCES telegram_accounts(id)
+    TABLE "user_interactions" CONSTRAINT "user_interactions_telegram_account_id_fkey" FOREIGN KEY (telegram_account_id) REFERENCES telegram_accounts(id)
+

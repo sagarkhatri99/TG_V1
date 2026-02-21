@@ -169,7 +169,8 @@ async def create_distributed_mass_dm_job(
 async def create_mass_dm_account_job(
     request: Request,
     account_id: int = Form(...),
-    message: str = Form(...),
+    message: Optional[str] = Form(None),  # Now optional if template_id is provided
+    template_id: Optional[int] = Form(None),  # NEW: Template ID for message generation
     user_description: Optional[str] = Form(None),
     stop_after_hours: Optional[int] = Form(None),
     rate_limit_per_hour: Optional[int] = Form(None),
@@ -181,6 +182,12 @@ async def create_mass_dm_account_job(
     db: Session = Depends(get_db),
     current_user: User = Depends(plan_based_dependency("mass_dm"))
 ):
+    # Validate either message or template_id is provided
+    if not message and not template_id:
+        raise HTTPException(
+            status_code=400, 
+            detail="Either 'message' or 'template_id' must be provided"
+        )
     if current_user.subscription_plan == 'pro':
         if current_user.job_counter_last_reset < datetime.utcnow() - timedelta(days=30):
             current_user.jobs_created_this_month = 0
@@ -192,9 +199,24 @@ async def create_mass_dm_account_job(
     account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id, TelegramAccount.user_id == current_user.id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found or not owned by user")
+    
+    # If template_id is provided, fetch and validate it
+    if template_id:
+        from models import MessageTemplate
+        template = db.query(MessageTemplate).filter(
+            MessageTemplate.id == template_id,
+            MessageTemplate.user_id == current_user.id
+        ).first()
+        
+        if not template:
+            raise HTTPException(status_code=404, detail="Template not found or not owned by user")
+        
+        # Store template content for use in job config
+        message = template.content  # Fallback for job config (will be regenerated per message)
 
     job_config = {
         "message": message,
+        "template_id": template_id,  # NEW: Store template_id for message generation
         "stop_after_hours": stop_after_hours,
         "rate_limit_per_hour": rate_limit_per_hour,
         "delay_seconds": delay_seconds,

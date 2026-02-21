@@ -79,7 +79,7 @@ export default function CampaignDetail() {
   const fetchInteractions = async () => {
     try {
       const response = await api.get(`/api/campaigns/${id}/interactions`);
-      setInteractions(response.data);
+      setInteractions(response.data.interactions || []); // Backend returns {interactions: [...], total, page, limit}
     } catch (error: any) {
       console.error('Failed to fetch interactions:', error);
     }

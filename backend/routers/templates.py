@@ -159,3 +159,42 @@ async def update_template(
     db.refresh(template)
     
     return template
+
+@router.get("/{template_id}/preview")
+async def preview_template(
+    template_id: int,
+    count: int = 3,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Generate sample messages from a template using spintax"""
+    import re
+    import random
+    
+    template = db.query(MessageTemplate).filter(
+        MessageTemplate.id == template_id,
+        MessageTemplate.user_id == current_user.id
+    ).first()
+    
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    
+    def generate_message(content: str) -> str:
+        """Generate a single message by randomly selecting from spintax options"""
+        # Pattern to match {option1|option2|option3}
+        pattern = r'\{([^}]+)\}'
+        
+        def replace_spintax(match):
+            options = match.group(1).split('|')
+            return random.choice([opt.strip() for opt in options])
+        
+        return re.sub(pattern, replace_spintax, content)
+    
+    # Generate requested number of sample messages
+    samples = [generate_message(template.content) for _ in range(min(count, 10))]
+    
+    return {
+        "template_id": template_id,
+        "template_name": template.name,
+        "samples": samples
+    }

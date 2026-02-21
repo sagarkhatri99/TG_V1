@@ -330,5 +330,6 @@ class MessageTemplate(Base):
     spam_risk_score = Column(Float, default=0.0)
     variables = Column(JSON, default=list)  # List of strings: ["name", "username"]
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     user = relationship("User", back_populates="message_templates")

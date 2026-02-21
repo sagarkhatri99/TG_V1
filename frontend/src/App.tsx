@@ -25,6 +25,7 @@ import CampaignDetail from './pages/CampaignDetail';
 import CampaignCreate from './pages/CampaignCreate';
 import Templates from './pages/Templates';
 import { Toaster } from 'react-hot-toast';
+import ErrorBoundary from './components/ErrorBoundary';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -65,17 +66,19 @@ const AppRoutes = () => {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <Router>
-          <AuthProvider>
-            <Toaster position="top-right" />
-            <AppRoutes />
-          </AuthProvider>
-        </Router>
-      </ThemeProvider>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider theme={theme}>
+          <CssBaseline />
+          <Router>
+            <AuthProvider>
+              <Toaster position="top-right" />
+              <AppRoutes />
+            </AuthProvider>
+          </Router>
+        </ThemeProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 

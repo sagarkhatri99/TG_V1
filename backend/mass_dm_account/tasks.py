@@ -410,10 +410,10 @@ async def _mass_dm_runner(job: Job, db: Session):
             job.completion_percentage = (result_dict['sent'] / len(ids)) * 100.0
             job.progress = int(job.completion_percentage)
             
-            # Commit progress every 5 messages or at the end
-            if (i + 1) % 5 == 0 or (i + 1) == len(ids):
-                db.commit()
-                logger.info(f"Job {job.id}: Progress {result_dict['sent']}/{len(ids)} ({job.progress}%)")
+            # Commit progress after EVERY message (was every 5 messages)
+            # This ensures real-time progress updates visible to users
+            db.commit()
+            logger.info(f"Job {job.id}: Progress {result_dict['sent']}/{len(ids)} ({job.progress}%)")
     
     # Final update
     job.messages_sent = result_dict['sent']

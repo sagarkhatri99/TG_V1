@@ -17,7 +17,8 @@ router = APIRouter()
 async def create_auto_promo_job(
     account_id: int = Form(...),
     target_group: str = Form(...),
-    promo_message: str = Form(...),
+    promo_message: Optional[str] = Form(None),  # Now optional if template_id is provided
+    template_id: Optional[int] = Form(None),  # NEW: Template ID for message generation
     user_description: Optional[str] = Form(None),
     interval_seconds: Optional[int] = Form(None),
     use_random_interval: bool = Form(False),
@@ -29,6 +30,12 @@ async def create_auto_promo_job(
     db: Session = Depends(get_db),
     current_user: User = Depends(plan_based_dependency("auto_promo"))
 ):
+    # Validate either promo_message or template_id is provided
+    if not promo_message and not template_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Either 'promo_message' or 'template_id' must be provided"
+        )
     if current_user.subscription_plan == 'pro':
         if current_user.job_counter_last_reset < datetime.utcnow() - timedelta(days=30):
             current_user.jobs_created_this_month = 0
@@ -40,6 +47,20 @@ async def create_auto_promo_job(
     account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id, TelegramAccount.user_id == current_user.id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found or not owned by user")
+    
+    # If template_id is provided, fetch and validate it
+    if template_id:
+        from models import MessageTemplate
+        template = db.query(MessageTemplate).filter(
+            MessageTemplate.id == template_id,
+            MessageTemplate.user_id == current_user.id
+        ).first()
+        
+        if not template:
+            raise HTTPException(status_code=404, detail="Template not found or not owned by user")
+        
+        # Store template content for use in job config
+        promo_message = template.content  # Fallback for job config
 
     if use_random_interval and (min_interval is None or max_interval is None):
         raise HTTPException(status_code=400, detail="min_interval and max_interval are required for random interval.")
@@ -47,6 +68,7 @@ async def create_auto_promo_job(
     job_config = {
         "target_group": target_group,
         "promo_message": promo_message,
+        "template_id": template_id,  # NEW: Store template_id for message generation
         "interval_seconds": interval_seconds,
         "use_random_interval": use_random_interval,
         "min_interval": min_interval,

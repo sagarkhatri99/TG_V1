@@ -89,7 +89,7 @@ services:
     networks:
       - app-network
     deploy:
-      replicas: 1
+      replicas: 6
 
   worker-short:
     build: ./backend

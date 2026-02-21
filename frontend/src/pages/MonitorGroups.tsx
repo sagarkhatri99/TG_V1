@@ -7,6 +7,7 @@ import {
   TextField,
   Button,
   Alert,
+  AlertTitle,
   CircularProgress,
   Chip,
   FormControl,
@@ -22,7 +23,7 @@ export default function MonitorGroups() {
   const [loading, setLoading] = useState(false);
   const [alert, setAlert] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   const [accounts, setAccounts] = useState<TelegramAccount[]>([]);
-  
+
   const [formData, setFormData] = useState({
     account_id: '',
     group_usernames: [] as string[],
@@ -40,7 +41,7 @@ export default function MonitorGroups() {
     const fetchAccounts = async () => {
       try {
         const response = await api.get(endpoints.accounts.list);
-        setAccounts(response.data.accounts);
+        setAccounts(response.data); // Backend returns array directly, not nested
       } catch (error) {
         setAlert({ type: 'error', message: 'Failed to fetch accounts.' });
       }
@@ -106,6 +107,13 @@ export default function MonitorGroups() {
       <Typography variant="body1" color="text.secondary" gutterBottom>
         Create a job to monitor groups for specific keywords and users.
       </Typography>
+
+      {/* Information banner for viewing results */}
+      <Alert severity="info" sx={{ mt: 2, mb: 2 }}>
+        <AlertTitle>Viewing Job Results</AlertTitle>
+        After creating a job, go to the <strong>Jobs</strong> page to monitor progress, view status, and download CSV results when completed.
+        You can filter by "Group Monitor" jobs to see only your group monitoring tasks.
+      </Alert>
 
       <Card sx={{ mt: 3, mb: 3 }}>
         <CardContent>

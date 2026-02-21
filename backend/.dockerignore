@@ -1,11 +1,65 @@
+# Python bytecode
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env/
+
+# Environment files (secrets)
 .env
+.env.*
+
+# Test artifacts
 tests/
-test.db
+.pytest_cache/
+pytest.ini
+coverage/
+.coverage
+htmlcov/
+
+# Session & journal files
 *.session
 *.session-journal
+
+# Log files
+*.log
+*.log.*
+backendlogs/
+backendsessions/
+
+# CSV / data export files
 *.csv
+
+# Local SQLite dev DB (excluded from build)
+# *.db  <-- intentionally kept: local schema changes should be preserved on host
+
+# Local result/verification files
+verification_results.txt
+backend_latest.log
+backend_logs.txt
+backend_recent.log
+worker_latest.log
+worker_recent.log
+template_error.log
+
+# Backup & documentation dirs (not needed in image)
+backups/
+docs/
+
+# Git metadata
+.git/
+.gitignore
+
+# Misc
+.DS_Store
+*.swp
+*.swo
+Thumbs.db
+
+# Node (safety net)
+node_modules/

@@ -57,8 +57,9 @@ export default function Layout({ children }: LayoutProps) {
   }
 
   const menuItems = useMemo(() => {
-    if (!user) return [];
-    const userPlan = user.subscription_plan || 'free';
+    // Default to 'free' plan if user is not loaded yet or is null
+    // This prevents the menu from disappearing during state updates or errors
+    const userPlan = user?.subscription_plan || 'free';
     return allMenuItems.filter(item => item.plans.includes(userPlan));
   }, [user]);
 
