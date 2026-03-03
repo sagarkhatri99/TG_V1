@@ -16,7 +16,6 @@ import {
   Dns as ProxiesIcon,
   AdminPanelSettings as AdminIcon,
   MonitorHeart as HealthIcon,
-  Campaign as CampaignIcon,
   Description as TemplatesIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation, Navigate } from 'react-router-dom';
@@ -30,7 +29,6 @@ interface LayoutProps {
 
 const allMenuItems = [
   { text: 'Dashboard', icon: <DashboardIcon />, path: '/', plans: ['free', 'pro', 'enterprise'], isNew: false },
-  { text: 'Campaigns', icon: <CampaignIcon />, path: '/campaigns', plans: ['free', 'pro', 'enterprise'], isNew: false },
   { text: 'Templates', icon: <TemplatesIcon />, path: '/templates', plans: ['free', 'pro', 'enterprise'], isNew: false },
   { text: 'Health Status', icon: <HealthIcon />, path: '/health', plans: ['free', 'pro', 'enterprise'], isNew: true },
   { text: 'Accounts', icon: <AccountsIcon />, path: '/accounts', plans: ['free', 'pro', 'enterprise'], isNew: false },

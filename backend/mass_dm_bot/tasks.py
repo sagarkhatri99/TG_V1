@@ -26,7 +26,7 @@ class MassDMBotError(Exception):
 async def _mass_dm_bot_runner(job: Job, db: Session):
     config = json.loads(job.config)
     bot_token = config.get('bot_token')
-    message = process_template_variations(config.get('message', ''))
+    raw_message = config.get('message', '')
     stop_after_hours = config.get('stop_after_hours')
     csv_file_path = config.get('csv_file_path')
     delay_seconds = config.get('delay_seconds')
@@ -69,7 +69,8 @@ async def _mass_dm_bot_runner(job: Job, db: Session):
             break
         
         try:
-            await bot.send_message(chat_id=uid, text=message)
+            current_message = process_template_variations(raw_message)
+            await bot.send_message(chat_id=uid, text=current_message)
             sent_count += 1
             job.messages_sent = sent_count
             job.completion_percentage = (sent_count / len(ids)) * 100.0

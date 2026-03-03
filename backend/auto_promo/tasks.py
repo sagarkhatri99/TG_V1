@@ -23,7 +23,7 @@ async def _auto_promo_runner(job: Job, db: Session):
 
     config = json.loads(job.config)
     target_group = config.get('target_group')
-    promo_message = process_template_variations(config.get('promo_message', ''))
+    raw_promo_message = config.get('promo_message', '')
     image_file_path = config.get('image_file_path')
     rate_limit_per_hour = config.get('rate_limit_per_hour')
     interval_seconds = config.get('interval_seconds', 3600)
@@ -95,10 +95,11 @@ async def _auto_promo_runner(job: Job, db: Session):
                     continue
             
             try:
+                current_promo_message = process_template_variations(raw_promo_message)
                 if image_file_path:
-                    await client.send_file(group, image_file_path, caption=promo_message)
+                    await client.send_file(group, image_file_path, caption=current_promo_message)
                 else:
-                    await client.send_message(group, promo_message)
+                    await client.send_message(group, current_promo_message)
 
                 message_timestamps.append(datetime.utcnow())
                 logger.info(f"Sent promo message to {target_group} for job {job.id}")

@@ -17,7 +17,6 @@ celery_app = Celery(
         'scrape_user_id.tasks',
         'core.cleanup_tasks',
         'tasks.maintenance_tasks',  # Daily health reset and cleanup
-        'tasks.campaign_tasks',
     ]
 )
 
@@ -39,10 +38,6 @@ celery_app.conf.update(
     worker_log_format='[%(asctime)s: %(levelname)s/%(processName)s] %(message)s',
     worker_task_log_format='[%(asctime)s: %(levelname)s/%(processName)s][%(task_name)s(%(task_id)s)] %(message)s',
     task_queues=(
-        Queue('campaign_high', routing_key='campaign_high', priority=10),
-        Queue('campaign_medium', routing_key='campaign_medium', priority=7),
-        Queue('campaign_low', routing_key='campaign_low', priority=5),
-        Queue('listeners', routing_key='listeners', priority=6),  # Dedicated queue for reply listeners
         Queue('default', routing_key='task.#', priority=5),
         Queue('long_tasks', routing_key='long.#', priority=3),
         Queue('short_tasks', routing_key='short.#', priority=8),
@@ -67,11 +62,6 @@ celery_app.conf.update(
             'task': 'cleanup_old_error_history',
             'schedule': crontab(hour=2, minute=0, day_of_week=0),  # Every Sunday at 02:00 UTC
         },
-        'start-reply-listener-pool': {
-            'task': 'tasks.campaign_tasks.start_reply_listener',
-            'schedule': 60.0,  # Check if listener is running every 60 seconds
-            'options': {'queue': 'listeners'},  # Explicit queue routing
-        },
     },
     task_routes={
         'auto_promo.tasks.auto_promo_task': {'queue': 'long_tasks'},
@@ -80,14 +70,6 @@ celery_app.conf.update(
         'mass_dm_bot.tasks.mass_dm_bot_task': {'queue': 'long_tasks'},
         'scrape_user_id.tasks.scrape_users_task': {'queue': 'short_tasks'},
         'core.cleanup_tasks.*': {'queue': 'celery'},
-        # Campaign tasks - explicit routing to campaign_high
-        'tasks.campaign_tasks.initialize_campaign': {'queue': 'campaign_high'},
-        'tasks.campaign_tasks.send_message_1': {'queue': 'campaign_high'},
-        'tasks.campaign_tasks.send_message_2': {'queue': 'campaign_high'},
-        'tasks.campaign_tasks.send_message_3': {'queue': 'campaign_high'},
-        'tasks.campaign_tasks.process_reply': {'queue': 'campaign_high'},
-        # Reply listeners - separate queue to prevent blocking campaigns
-        'tasks.campaign_tasks.start_reply_listener': {'queue': 'listeners'},
     },
 )
 

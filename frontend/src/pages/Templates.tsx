@@ -46,11 +46,21 @@ export default function Templates() {
       const response = await api.get('/api/templates');
       setTemplates(response.data || []);
     } catch (error: any) {
-      console.error('Failed to fetch templates:', error);
-      const errorMsg = error.response?.data?.detail || 'Failed to fetch templates';
+      // Full error diagnostics
+      console.error('=== Templates fetch error ===');
+      console.error('Request URL:', error.config?.url);
+      console.error('Base URL:', error.config?.baseURL);
+      console.error('Full URL:', (error.config?.baseURL || '') + (error.config?.url || ''));
+      console.error('Response status:', error.response?.status);
+      console.error('Response data:', error.response?.data);
+      console.error('Error message:', error.message);
+      console.error('Error code:', error.code);
+      console.error('Full error:', error);
+
+      const errorMsg = error.response?.data?.detail
+        || `${error.message} (${(error.config?.baseURL || '') + (error.config?.url || '')})`;
       setError(errorMsg);
-      toast.error(errorMsg);
-      // Set empty array to prevent undefined errors
+      toast.error('Failed to fetch templates: ' + error.message);
       setTemplates([]);
     } finally {
       setLoading(false);
@@ -70,8 +80,13 @@ export default function Templates() {
       setFormData({ name: '', category: 'general', content: '' });
       fetchTemplates();
     } catch (error: any) {
-      console.error('Failed to create template:', error);
-      toast.error(error.response?.data?.detail || 'Failed to create template');
+      console.error('=== Template create error ===');
+      console.error('Request URL:', error.config?.url);
+      console.error('Base URL:', error.config?.baseURL);
+      console.error('Response status:', error.response?.status);
+      console.error('Response data:', error.response?.data);
+      console.error('Error message:', error.message);
+      toast.error(error.response?.data?.detail || 'Failed to create template: ' + error.message);
     }
   };
 

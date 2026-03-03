@@ -298,35 +298,8 @@ async def delete_account(account_id: int, db: Session = Depends(get_db), current
     try:
         # Import all necessary models for deletion
         from models import (
-            Campaign, CampaignUserInteraction, CampaignPendingTask, 
-            CampaignMessageTracking, CampaignReply, CampaignLog,
-            MessageLog, ActionLog, AccountHealth, UserInteraction, Proxy
+            MessageLog, ActionLog, AccountHealth, UserInteraction, Proxy, Job
         )
-        
-        # 1. Delete campaign-related data in the correct order (children first)
-        # Get all campaigns for this account
-        campaign_ids = [c.id for c in db.query(Campaign).filter(Campaign.telegram_account_id == account_id).all()]
-        
-        if campaign_ids:
-            # Get all interaction IDs for these campaigns
-            interaction_ids = [i.id for i in db.query(CampaignUserInteraction).filter(CampaignUserInteraction.campaign_id.in_(campaign_ids)).all()]
-            
-            if interaction_ids:
-                # Delete campaign logs related to interactions
-                db.query(CampaignLog).filter(CampaignLog.campaign_user_interaction_id.in_(interaction_ids)).delete(synchronize_session=False)
-                # Delete campaign replies
-                db.query(CampaignReply).filter(CampaignReply.campaign_user_interaction_id.in_(interaction_ids)).delete(synchronize_session=False)
-                # Delete campaign message tracking
-                db.query(CampaignMessageTracking).filter(CampaignMessageTracking.campaign_user_interaction_id.in_(interaction_ids)).delete(synchronize_session=False)
-                # Delete pending tasks
-                db.query(CampaignPendingTask).filter(CampaignPendingTask.campaign_user_interaction_id.in_(interaction_ids)).delete(synchronize_session=False)
-            
-            # Delete campaign logs not tied to interactions
-            db.query(CampaignLog).filter(CampaignLog.campaign_id.in_(campaign_ids)).delete(synchronize_session=False)
-            # Delete campaign user interactions
-            db.query(CampaignUserInteraction).filter(CampaignUserInteraction.campaign_id.in_(campaign_ids)).delete(synchronize_session=False)
-            # Delete campaigns
-            db.query(Campaign).filter(Campaign.telegram_account_id == account_id).delete(synchronize_session=False)
         
         # 2. Delete jobs
         db.query(Job).filter(Job.telegram_account_id == account_id).delete(synchronize_session=False)
@@ -379,8 +352,7 @@ async def update_account_operating_hours(
     db: Session = Depends(get_db),
     current_user: User = Depends(plan_based_dependency("accounts"))
 ):
-    """Update account operating hours and daily limits (applies to all activities: Mass DM, Auto Promo, Campaigns)."""
-    from services.campaign.account_status_cache import invalidate_account_cache
+    """Update account operating hours and daily limits (applies to all activities: Mass DM, Auto Promo)."""
     
     account = db.query(TelegramAccount).filter(
         TelegramAccount.id == account_id,
@@ -404,9 +376,6 @@ async def update_account_operating_hours(
         account.daily_message_limit = settings_data.daily_message_limit
     
     db.commit()
-    
-    # Invalidate cache to force re-check
-    invalidate_account_cache(account_id)
     
     return {
         "message": "Account operating hours updated successfully",

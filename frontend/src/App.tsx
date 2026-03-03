@@ -20,9 +20,7 @@ import Help from './pages/Help';
 import Jobs from './pages/Jobs';
 import Proxies from './pages/Proxies';
 import AdminDashboard from './pages/AdminDashboard';
-import CampaignDashboard from './pages/CampaignDashboard';
-import CampaignDetail from './pages/CampaignDetail';
-import CampaignCreate from './pages/CampaignCreate';
+
 import Templates from './pages/Templates';
 import { Toaster } from 'react-hot-toast';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -55,9 +53,7 @@ const AppRoutes = () => {
         <Route path="/help" element={<Help />} />
         <Route path="/proxies" element={<Proxies />} />
         <Route path="/admin" element={<AdminDashboard />} />
-        <Route path="/campaigns" element={<CampaignDashboard />} />
-        <Route path="/campaigns/new" element={<CampaignCreate />} />
-        <Route path="/campaigns/:id" element={<CampaignDetail />} />
+
         <Route path="/templates" element={<Templates />} />
       </Route>
     </Routes>

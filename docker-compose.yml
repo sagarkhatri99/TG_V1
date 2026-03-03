@@ -12,7 +12,9 @@ services:
       - app-network
 
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      target: api
     ports:
       - "8000:8000"
     env_file:
@@ -42,7 +44,9 @@ services:
       - app-network
 
   worker:
-    build: ./backend
+    build:
+      context: ./backend
+      target: worker
     command: ["celery", "-A", "celery_app", "worker", "-Q", "celery,default", "-l", "info", "--concurrency=4", "--prefetch-multiplier=1", "-n", "worker@%h"]
     env_file:
       - ./backend/.env
@@ -67,7 +71,9 @@ services:
       replicas: 1
 
   worker-long:
-    build: ./backend
+    build:
+      context: ./backend
+      target: worker
     command: ["celery", "-A", "celery_app", "worker", "-Q", "long_tasks", "-l", "info", "--concurrency=1", "--prefetch-multiplier=1"]
     env_file:
       - ./backend/.env
@@ -89,10 +95,12 @@ services:
     networks:
       - app-network
     deploy:
-      replicas: 6
+      replicas: 1
 
   worker-short:
-    build: ./backend
+    build:
+      context: ./backend
+      target: worker
     command: ["celery", "-A", "celery_app", "worker", "-Q", "short_tasks", "-l", "info", "--concurrency=3", "--prefetch-multiplier=1"]
     env_file:
       - ./backend/.env
@@ -117,58 +125,12 @@ services:
       replicas: 1
 
 
-  worker-campaign:
-    build: ./backend
-    command: ["celery", "-A", "celery_app", "worker", "-Q", "campaign_high", "-l", "info", "--concurrency=2", "--prefetch-multiplier=1", "-n", "campaign@%h"]
-    env_file:
-      - ./backend/.env
-    environment:
-      - DATABASE_URL=postgresql://user:password@db:5432/tg_tools
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-    depends_on:
-      redis:
-        condition: service_healthy
-      db:
-        condition: service_healthy
-    volumes:
-      - ./backend/sessions:/app/sessions
-      - ./backend/job_results:/app/job_results
-      - ./backend/uploads:/app/uploads
-    restart: unless-stopped
-    networks:
-      - app-network
-    deploy:
-      replicas: 1
 
-  worker-listeners:
-    build: ./backend
-    command: ["celery", "-A", "celery_app", "worker", "-Q", "listeners", "-l", "info", "--concurrency=4", "--prefetch-multiplier=1", "-n", "listeners@%h"]
-    env_file:
-      - ./backend/.env
-    environment:
-      - DATABASE_URL=postgresql://user:password@db:5432/tg_tools
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
-    depends_on:
-      redis:
-        condition: service_healthy
-      db:
-        condition: service_healthy
-    volumes:
-      - ./backend/sessions:/app/sessions
-      - ./backend/job_results:/app/job_results
-      - ./backend/uploads:/app/uploads
-    restart: unless-stopped
-    networks:
-      - app-network
-    deploy:
-      replicas: 1
 
   celery-beat:
-    build: ./backend
+    build:
+      context: ./backend
+      target: worker
     command: ["celery", "-A", "celery_app", "beat", "-l", "info"]
     env_file:
       - ./backend/.env
@@ -191,7 +153,9 @@ services:
       - app-network
 
   flower:
-    build: ./backend
+    build:
+      context: ./backend
+      target: flower
     command: ["celery", "-A", "celery_app", "flower", "--port=5555", "--broker=redis://redis:6379/0"]
     environment:
       - FLOWER_UNAUTHENTICATED_API=true

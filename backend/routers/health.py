@@ -103,7 +103,7 @@ def diagnose():
         checks["checks"]["celery_broker"] = {"status": "failed", "error": str(e)}
         checks["status"] = "unhealthy"
 
-    # Workers check (CRITICAL: Check for campaign worker)
+    # Workers check
     try:
         inspect = celery_app.control.inspect()
         active = inspect.active()
@@ -112,16 +112,10 @@ def diagnose():
             checks["checks"]["workers"] = {"status": "warning", "message": "No workers found"}
             checks["status"] = "degraded"
         else:
-            has_campaign_worker = any('campaign' in str(w).lower() for w in active.keys())
             checks["checks"]["workers"] = {
                 "status": "ok",
-                "active_workers": list(active.keys()),
-                "has_campaign_worker": has_campaign_worker
+                "active_workers": list(active.keys())
             }
-
-            if not has_campaign_worker:
-                checks["status"] = "degraded"
-                checks["checks"]["workers"]["warning"] = "campaign worker not found"
 
     except Exception as e:
         checks["checks"]["workers"] = {"status": "failed", "error": str(e)}

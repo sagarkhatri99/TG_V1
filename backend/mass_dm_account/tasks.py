@@ -264,7 +264,7 @@ async def _mass_dm_runner(job: Job, db: Session):
         raise Exception("Account not found")
 
     config = json.loads(job.config)
-    message = process_template_variations(config.get('message', ''))
+    raw_message_template = config.get('message', '')
     stop_after_hours = config.get('stop_after_hours')
     csv_file_path = config.get('csv_file_path')
     image_file_path = config.get('image_file_path')
@@ -390,9 +390,12 @@ async def _mass_dm_runner(job: Job, db: Session):
                     logger.info(f"Job {job.id}: Applying default delay {default_delay}s before sending message {i+1}/{len(ids)}")
                     await asyncio.sleep(default_delay)
             
+            # Evaluate template for this specific message
+            current_message = process_template_variations(raw_message_template)
+            
             # Send message WITHOUT additional delay (delay already applied above)
             uid_str, success, error_msg = await _send_message_with_retry(
-                client, uid, message, image_file_path, job.id, result_dict,
+                client, uid, current_message, image_file_path, job.id, result_dict,
                 delay_seconds=None,  # No delay inside function - already applied above
                 min_delay_seconds=None,
                 max_delay_seconds=None

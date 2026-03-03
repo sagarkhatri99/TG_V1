@@ -15,11 +15,9 @@ import {
   IconButton,
   CircularProgress,
   Alert,
-  Button,
-  Tooltip,
+  Button
 } from '@mui/material';
 import { PlayArrow, Pause, Delete, Refresh, Download, RestartAlt, Analytics } from '@mui/icons-material';
-import { useNavigate } from 'react-router-dom';
 import type { AxiosResponse } from 'axios';
 import api, { endpoints } from '../api/Index';
 import JobReportsDialog from '../components/JobReportsDialog';
@@ -40,7 +38,6 @@ interface Job {
 }
 
 export default function Jobs() {
-  const navigate = useNavigate();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [alert, setAlert] = useState<{ type: 'success' | 'error', message: string } | null>(null);
@@ -324,23 +321,6 @@ export default function Jobs() {
                           >
                             <Download />
                           </IconButton>
-                        )}
-                        {job.job_type === 'campaign' && (
-                          <Tooltip title="View Campaign">
-                            <IconButton
-                              size="small"
-                              onClick={() => {
-                                const config = JSON.parse((job as any).config || '{}');
-                                if (config.campaign_id) {
-                                  navigate(`/campaigndashboard?id=${config.campaign_id}`);
-                                } else {
-                                  navigate('/campaigndashboard');
-                                }
-                              }}
-                            >
-                              <Analytics />
-                            </IconButton>
-                          </Tooltip>
                         )}
                       </TableCell>
                     </TableRow>

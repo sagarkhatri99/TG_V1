@@ -1,12 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
+import logging
+import traceback
 
 from database import get_db
 from models import MessageTemplate, User
 from routers.auth import get_current_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/api/templates",
@@ -31,24 +36,36 @@ class TemplateResponse(BaseModel):
     class Config:
         from_attributes = True
 
-@router.get("/", response_model=List[TemplateResponse])
+@router.get("", response_model=List[TemplateResponse])
 async def list_templates(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """List all templates for current user"""
-    templates = db.query(MessageTemplate).filter(
-        MessageTemplate.user_id == current_user.id
-    ).order_by(MessageTemplate.created_at.desc()).all()
-    return templates
+    logger.info(f"[TEMPLATES] GET /api/templates - user_id={current_user.id} email={current_user.email}")
+    try:
+        # Verify table exists
+        result = db.execute(text("SELECT COUNT(*) FROM information_schema.tables WHERE table_name='message_templates'")).scalar()
+        logger.info(f"[TEMPLATES] message_templates table exists: {result > 0}")
 
-@router.post("/", response_model=TemplateResponse)
+        templates = db.query(MessageTemplate).filter(
+            MessageTemplate.user_id == current_user.id
+        ).order_by(MessageTemplate.created_at.desc()).all()
+        logger.info(f"[TEMPLATES] Found {len(templates)} templates for user_id={current_user.id}")
+        return templates
+    except Exception as e:
+        logger.error(f"[TEMPLATES] ERROR listing templates: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+@router.post("", response_model=TemplateResponse)
 async def create_template(
     template_data: TemplateCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Create a new message template"""
+    logger.info(f"[TEMPLATES] POST /api/templates - user_id={current_user.id} name='{template_data.name}'")
     
     # Extract variables from content (find all {word|word2|word3} patterns)
     import re

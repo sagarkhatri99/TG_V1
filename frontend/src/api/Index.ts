@@ -89,18 +89,4 @@ export const endpoints = {
     alerts: '/api/health/alerts',
   },
 
-  campaigns: {
-    list: (status_filter?: string) => `/api/campaigns/?${status_filter ? `status_filter=${status_filter}` : ''}`,
-    create: '/api/campaigns/',
-    stats: '/api/campaigns/stats',
-    get: (id: number) => `/api/campaigns/${id}`,
-    update: (id: number) => `/api/campaigns/${id}`,
-    delete: (id: number) => `/api/campaigns/${id}`,
-    start: (id: number) => `/api/campaigns/${id}/start`,
-    pause: (id: number) => `/api/campaigns/${id}/pause`,
-    resume: (id: number) => `/api/campaigns/${id}/resume`,
-    interactions: (id: number, status_filter?: string) => `/api/campaigns/${id}/interactions?${status_filter ? `status_filter=${status_filter}` : ''}`,
-    logs: (id: number) => `/api/campaigns/${id}/logs`,
-    accountSettings: (accountId: number) => `/api/accounts/${accountId}/operating-hours`,
-  },
 };
