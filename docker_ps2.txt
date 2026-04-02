@@ -1,0 +1,10 @@
+CONTAINER ID   IMAGE                COMMAND                  CREATED          STATUS                    PORTS                                         NAMES
+f4f07f972f24   tg_v1-frontend       "/docker-entrypoint.…"   31 minutes ago   Up 30 minutes             0.0.0.0:3000->80/tcp, [::]:3000->80/tcp       tg_v1-frontend-1
+73b586b3ffc4   tg_v1-flower         "celery -A celery_ap…"   31 minutes ago   Up 30 minutes (healthy)   0.0.0.0:5555->5555/tcp, [::]:5555->5555/tcp   tg_v1-flower-1
+d25c5b50d2f9   tg_v1-worker         "celery -A celery_ap…"   31 minutes ago   Up 31 minutes                                                           tg_v1-worker-1
+556b1e7c2a67   tg_v1-worker-long    "celery -A celery_ap…"   31 minutes ago   Up 31 minutes                                                           tg_v1-worker-long-1
+1ac3cba8509f   tg_v1-worker-short   "celery -A celery_ap…"   31 minutes ago   Up 31 minutes                                                           tg_v1-worker-short-1
+866f76c947c2   tg_v1-celery-beat    "celery -A celery_ap…"   31 minutes ago   Up 31 minutes                                                           tg_v1-celery-beat-1
+2efccedc9430   tg_v1-backend        "python /app/start.py"   31 minutes ago   Up 31 minutes (healthy)   0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp   tg_v1-backend-1
+c9116f453540   postgres:13          "docker-entrypoint.s…"   31 minutes ago   Up 31 minutes (healthy)   0.0.0.0:5432->5432/tcp, [::]:5432->5432/tcp   tg_v1-db-1
+831135988b69   redis:alpine         "docker-entrypoint.s…"   31 minutes ago   Up 31 minutes (healthy)   0.0.0.0:6379->6379/tcp, [::]:6379->6379/tcp   tg_v1-redis-1

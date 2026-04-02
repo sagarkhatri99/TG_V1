@@ -21,6 +21,7 @@ class GroupMonitorRequest(BaseModel):
     monitored_users: List[str]
     limit: int = 100
     days: Optional[int] = None  # Number of days back to include (e.g., 1 or 7)
+    scheduled_at: Optional[str] = None  # ISO8601 datetime string for deferred start
 
 @router.post("/create-job")
 async def create_group_monitor_job(request: GroupMonitorRequest, db: Session = Depends(get_db), current_user: User = Depends(plan_based_dependency("monitor"))):
@@ -46,18 +47,35 @@ async def create_group_monitor_job(request: GroupMonitorRequest, db: Session = D
         "days": request.days if request.days in [1, 7] else None
     }
 
+    # Parse scheduled_at if provided
+    scheduled_at_dt = None
+    if request.scheduled_at:
+        try:
+            scheduled_at_dt = datetime.fromisoformat(request.scheduled_at.replace('Z', '+00:00'))
+            if scheduled_at_dt.tzinfo is not None:
+                import pytz
+                scheduled_at_dt = scheduled_at_dt.astimezone(pytz.utc).replace(tzinfo=None)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid scheduled_at format. Use ISO8601, e.g. 2026-03-20T10:00:00Z")
+
+    is_scheduled = scheduled_at_dt is not None and scheduled_at_dt > datetime.utcnow()
+    initial_status = 'scheduled' if is_scheduled else 'pending'
+
     new_job = Job(
         user_id=current_user.id,
         telegram_account_id=request.account_id,
         job_type='group_monitor',
         config=json.dumps(job_config),
-        status='pending'
+        status=initial_status,
+        scheduled_at=scheduled_at_dt
     )
     db.add(new_job)
     db.commit()
     db.refresh(new_job)
 
-    group_monitor_task.delay(new_job.id)
+    # Only dispatch immediately if not scheduled for later
+    if not is_scheduled:
+        group_monitor_task.delay(new_job.id)
 
     if current_user.subscription_plan == 'pro':
         current_user.jobs_created_this_month += 1

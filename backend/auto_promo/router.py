@@ -20,6 +20,7 @@ async def create_auto_promo_job(
     promo_message: Optional[str] = Form(None),  # Now optional if template_id is provided
     template_id: Optional[int] = Form(None),  # NEW: Template ID for message generation
     user_description: Optional[str] = Form(None),
+    scheduled_at: Optional[str] = Form(None),  # ISO8601 datetime string for deferred start
     interval_seconds: Optional[int] = Form(None),
     use_random_interval: bool = Form(False),
     min_interval: Optional[int] = Form(None),
@@ -77,12 +78,29 @@ async def create_auto_promo_job(
         "rate_limit_per_hour": rate_limit_per_hour,
     }
 
+    # Parse scheduled_at if provided
+    scheduled_at_dt = None
+    if scheduled_at:
+        try:
+            scheduled_at_dt = datetime.fromisoformat(scheduled_at.replace('Z', '+00:00'))
+            # Convert to UTC naive datetime for comparison
+            if scheduled_at_dt.tzinfo is not None:
+                import pytz
+                scheduled_at_dt = scheduled_at_dt.astimezone(pytz.utc).replace(tzinfo=None)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid scheduled_at format. Use ISO8601, e.g. 2026-03-20T10:00:00Z")
+
+    # Determine initial job status
+    is_scheduled = scheduled_at_dt is not None and scheduled_at_dt > datetime.utcnow()
+    initial_status = 'scheduled' if is_scheduled else 'pending'
+
     new_job = Job(
         user_id=current_user.id,
         telegram_account_id=account_id,
         job_type='auto_promo',
         config=json.dumps(job_config),
-        status='pending',
+        status=initial_status,
+        scheduled_at=scheduled_at_dt,
         user_description=user_description
     )
     db.add(new_job)
@@ -105,13 +123,20 @@ async def create_auto_promo_job(
             db.commit()
             raise HTTPException(status_code=500, detail=f"Failed to save image file: {e}")
 
-    auto_promo_task.delay(new_job.id)
+    # Only dispatch immediately if not scheduled for later
+    if not is_scheduled:
+        auto_promo_task.delay(new_job.id)
 
     if current_user.subscription_plan == 'pro':
         current_user.jobs_created_this_month += 1
         db.commit()
 
-    return {"job_id": new_job.id, "message": "Auto promo job created successfully."}
+    return {
+        "job_id": new_job.id,
+        "message": "Auto promo job created successfully.",
+        "status": initial_status,
+        "scheduled_at": scheduled_at_dt.isoformat() if scheduled_at_dt else None
+    }
 
 # Old endpoints are now deprecated.
 # from fastapi import Form

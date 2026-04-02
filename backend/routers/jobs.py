@@ -54,14 +54,28 @@ async def list_jobs(
             "created_at": job.created_at,
             "started_at": job.started_at,
             "completed_at": job.completed_at,
+            "scheduled_at": job.scheduled_at,
             "error_message": job.error_message,
             "user_description": job.user_description,
             "messages_sent": job.messages_sent or 0,
             "messages_planned": job.messages_planned or 0,
-            "completion_percentage": safe_completion
+            "completion_percentage": safe_completion,
+            "celery_task_id": job.celery_task_id,
+            "parent_job_id": job.parent_job_id,
+            "batch_number": job.batch_number,
+            "total_batches": job.total_batches,
+            "batch_user_ids": _parse_json_safely(job.batch_user_ids)
         })
     
     return {"jobs": job_data}
+
+def _parse_json_safely(data: str):
+    if not data:
+        return []
+    try:
+        return json.loads(data)
+    except:
+        return []
 
 @router.get("/{job_id}")
 async def get_job(
@@ -94,11 +108,17 @@ async def get_job(
         "created_at": job.created_at,
         "started_at": job.started_at,
         "completed_at": job.completed_at,
+        "scheduled_at": job.scheduled_at,
         "error_message": job.error_message,
         "user_description": job.user_description,
         "messages_sent": job.messages_sent or 0,
         "messages_planned": job.messages_planned or 0,
-        "completion_percentage": safe_completion
+        "completion_percentage": safe_completion,
+        "celery_task_id": job.celery_task_id,
+        "parent_job_id": job.parent_job_id,
+        "batch_number": job.batch_number,
+        "total_batches": job.total_batches,
+        "batch_user_ids": _parse_json_safely(job.batch_user_ids)
     }
 
 @router.post("/{job_id}/pause")
@@ -178,6 +198,7 @@ async def restart_job(
             'mass_dm_account': ('mass_dm_account.tasks', 'mass_dm_account_task'),
             'mass_dm_bot': ('mass_dm_bot.tasks', 'mass_dm_bot_task'),
             'auto_promo': ('auto_promo.tasks', 'auto_promo_task'),
+            'group_join': ('group_joiner.tasks', 'group_join_task'),
         }
         if new_job.job_type in task_map:
             module_name, func_name = task_map[new_job.job_type]

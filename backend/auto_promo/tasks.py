@@ -4,6 +4,7 @@ from models import Job, TelegramAccount
 from database import SessionLocal
 from core.session_manager import session_manager
 from core.human_aware_task import HumanAwareTask
+from core.account_protection import rate_limiter, sync_health_to_db
 import json
 import logging
 import random
@@ -12,6 +13,7 @@ from datetime import datetime, timedelta
 import asyncio
 import os
 from telethon.errors import FloodWaitError, ChatWriteForbiddenError
+from celery.exceptions import SoftTimeLimitExceeded
 from utils.template_processor import process_template_variations
 
 logger = logging.getLogger(__name__)
@@ -127,6 +129,10 @@ async def _auto_promo_runner(job: Job, db: Session):
                 raise Exception(f"Cannot send message to '{target_group}'. The account may not have permission to post, or it might be a channel where posting is restricted.") from e
             except FloodWaitError as e:
                 logger.warning(f"Flood wait error for job {job.id}: {e}. Retrying in {e.seconds} seconds.")
+                # Sync health score to DB after flood event
+                sync_health_to_db(account.id, db, extra_stats={
+                    "messages_sent_today": job.messages_sent or 0
+                })
                 await asyncio.sleep(e.seconds)
                 continue # Skip to the next iteration's sleep
 
@@ -159,6 +165,19 @@ def auto_promo_task(self, job_id: int):
         job.completed_at = datetime.utcnow()
         db.commit()
 
+    except SoftTimeLimitExceeded:
+        logger.warning(f"Auto promo job {job_id} hit soft time limit — pausing with progress saved")
+        try:
+            if job:
+                job.status = 'paused'
+                job.error_message = (
+                    f"Paused: Celery soft time limit reached. "
+                    f"Progress saved: {job.messages_sent or 0}/{job.messages_planned or 0} messages sent."
+                )
+                db.commit()
+        except Exception as pause_err:
+            logger.error(f"Failed to pause auto promo job {job_id} on SoftTimeLimitExceeded: {pause_err}")
+
     except Exception as e:
         logger.error(f"Error executing auto promo job {job.id}: {e}")
         job.status = 'failed'
@@ -166,6 +185,10 @@ def auto_promo_task(self, job_id: int):
         db.commit()
     finally:
         if account_id:
+            # Sync final health state to DB
+            sync_health_to_db(account_id, db, extra_stats={
+                "messages_sent_today": job.messages_sent or 0
+            })
             logger.info(f"Disconnecting client for account {account_id} from job {job_id}")
             asyncio.run(session_manager.disconnect_client(account_id))
         db.close()

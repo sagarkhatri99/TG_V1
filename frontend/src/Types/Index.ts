@@ -1,5 +1,6 @@
 export interface Proxy {
   id: number;
+  name?: string;
   proxy_url: string;
   proxy_type: string;
   country_code: string;

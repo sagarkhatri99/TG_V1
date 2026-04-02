@@ -22,6 +22,8 @@ import Proxies from './pages/Proxies';
 import AdminDashboard from './pages/AdminDashboard';
 
 import Templates from './pages/Templates';
+import GroupJoiner from './pages/GroupJoiner';
+
 import { Toaster } from 'react-hot-toast';
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -55,6 +57,7 @@ const AppRoutes = () => {
         <Route path="/admin" element={<AdminDashboard />} />
 
         <Route path="/templates" element={<Templates />} />
+        <Route path="/group-joiner" element={<GroupJoiner />} />
       </Route>
     </Routes>
   );

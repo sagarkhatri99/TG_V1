@@ -24,6 +24,7 @@ async def create_mass_dm_bot_job(
     min_delay_seconds: Optional[int] = Form(None),
     max_delay_seconds: Optional[int] = Form(None),
     csv_file: UploadFile = File(...),
+    scheduled_at: Optional[str] = Form(None),  # ISO8601 datetime string for deferred start
     db: Session = Depends(get_db),
     current_user: User = Depends(plan_based_dependency("mass_dm"))
 ):
@@ -41,12 +42,27 @@ async def create_mass_dm_bot_job(
         "message": message,
         "stop_after_hours": stop_after_hours,
     }
+    # Parse scheduled_at if provided
+    scheduled_at_dt = None
+    if scheduled_at:
+        try:
+            scheduled_at_dt = datetime.fromisoformat(scheduled_at.replace('Z', '+00:00'))
+            if scheduled_at_dt.tzinfo is not None:
+                import pytz
+                scheduled_at_dt = scheduled_at_dt.astimezone(pytz.utc).replace(tzinfo=None)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid scheduled_at format. Use ISO8601, e.g. 2026-03-20T10:00:00Z")
+
+    is_scheduled = scheduled_at_dt is not None and scheduled_at_dt > datetime.utcnow()
+    initial_status = 'scheduled' if is_scheduled else 'pending'
+
     new_job = Job(
         user_id=current_user.id,
         telegram_account_id=None,
         job_type='mass_dm_bot',
         config=json.dumps(initial_job_config),
-        status='pending',
+        status=initial_status,
+        scheduled_at=scheduled_at_dt,
         user_description=user_description
     )
     db.add(new_job)
@@ -80,7 +96,8 @@ async def create_mass_dm_bot_job(
     new_job.config = json.dumps(final_job_config)
     db.commit()
 
-    # Step 4: Dispatch the task
-    mass_dm_bot_task.delay(new_job.id)
+    # Step 4: Dispatch the task (only if not scheduled)
+    if not is_scheduled:
+        mass_dm_bot_task.delay(new_job.id)
 
     return {"job_id": new_job.id, "message": "Mass DM Bot job created successfully."}

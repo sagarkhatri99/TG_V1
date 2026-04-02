@@ -51,6 +51,7 @@ async def create_distributed_mass_dm_job(
     max_delay_seconds: Optional[int] = Form(None),
     csv_file: UploadFile = File(...),
     image_file: Optional[UploadFile] = File(None),
+    scheduled_at: Optional[str] = Form(None),  # ISO8601 datetime string for deferred start
     db: Session = Depends(get_db),
     current_user: User = Depends(plan_based_dependency("mass_dm"))
 ):
@@ -100,6 +101,20 @@ async def create_distributed_mass_dm_job(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to parse CSV: {str(e)}")
 
+    # Parse scheduled_at if provided
+    scheduled_at_dt = None
+    if scheduled_at:
+        try:
+            scheduled_at_dt = datetime.fromisoformat(scheduled_at.replace('Z', '+00:00'))
+            if scheduled_at_dt.tzinfo is not None:
+                import pytz
+                scheduled_at_dt = scheduled_at_dt.astimezone(pytz.utc).replace(tzinfo=None)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid scheduled_at format. Use ISO8601, e.g. 2026-03-20T10:00:00Z")
+
+    is_scheduled = scheduled_at_dt is not None and scheduled_at_dt > datetime.utcnow()
+    initial_status = 'scheduled' if is_scheduled else 'pending'
+
     try:
         # Distribute users across accounts
         created_job_ids, total_users, users_per_batch = distribute_users_across_accounts(
@@ -136,9 +151,12 @@ async def create_distributed_mass_dm_job(
             job = db.query(Job).filter(Job.id == job_id).first()
             if job:
                 job.config = json.dumps(job_config)
+                job.status = initial_status
+                job.scheduled_at = scheduled_at_dt
                 db.commit()
-                # Dispatch the task to workers
-                mass_dm_account_task.delay(job_id)
+                # Dispatch the task to workers only if not scheduled
+                if not is_scheduled:
+                    mass_dm_account_task.delay(job_id)
 
         # Update job counter for pro users
         if current_user.subscription_plan == 'pro':
@@ -172,6 +190,7 @@ async def create_mass_dm_account_job(
     message: Optional[str] = Form(None),  # Now optional if template_id is provided
     template_id: Optional[int] = Form(None),  # NEW: Template ID for message generation
     user_description: Optional[str] = Form(None),
+    scheduled_at: Optional[str] = Form(None),  # ISO8601 datetime string for deferred start
     stop_after_hours: Optional[int] = Form(None),
     rate_limit_per_hour: Optional[int] = Form(None),
     delay_seconds: Optional[int] = Form(None),
@@ -224,12 +243,27 @@ async def create_mass_dm_account_job(
         "max_delay_seconds": max_delay_seconds,
     }
 
+    # Parse scheduled_at if provided
+    scheduled_at_dt = None
+    if scheduled_at:
+        try:
+            scheduled_at_dt = datetime.fromisoformat(scheduled_at.replace('Z', '+00:00'))
+            if scheduled_at_dt.tzinfo is not None:
+                import pytz
+                scheduled_at_dt = scheduled_at_dt.astimezone(pytz.utc).replace(tzinfo=None)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid scheduled_at format. Use ISO8601, e.g. 2026-03-20T10:00:00Z")
+
+    is_scheduled = scheduled_at_dt is not None and scheduled_at_dt > datetime.utcnow()
+    initial_status = 'scheduled' if is_scheduled else 'pending'
+
     new_job = Job(
         user_id=current_user.id,
         telegram_account_id=account_id,
         job_type='mass_dm_account',
         config=json.dumps(job_config),
-        status='pending',
+        status=initial_status,
+        scheduled_at=scheduled_at_dt,
         user_description=user_description
     )
     db.add(new_job)
@@ -268,7 +302,13 @@ async def create_mass_dm_account_job(
     new_job.config = json.dumps(job_config)
     db.commit()
 
-    # Step 4: Dispatch the task
-    mass_dm_account_task.delay(new_job.id)
+    # Only dispatch immediately if not scheduled for later
+    if not is_scheduled:
+        mass_dm_account_task.delay(new_job.id)
 
-    return {"job_id": new_job.id, "message": "Mass DM Account job created successfully."}
+    return {
+        "job_id": new_job.id,
+        "message": "Mass DM Account job created successfully.",
+        "status": initial_status,
+        "scheduled_at": scheduled_at_dt.isoformat() if scheduled_at_dt else None
+    }

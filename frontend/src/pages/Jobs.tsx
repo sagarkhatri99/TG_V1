@@ -26,10 +26,11 @@ interface Job {
   id: number;
   telegram_account_id: number;
   job_type: string;
-  status: 'pending' | 'running' | 'processing' | 'paused' | 'completed' | 'failed';
+  status: 'pending' | 'running' | 'processing' | 'paused' | 'completed' | 'failed' | 'scheduled';
   progress: number;
   total_tasks: number;
   created_at: string;
+  scheduled_at: string | null;
   error_message: string | null;
   user_description: string | null;
   messages_sent: number;
@@ -185,6 +186,7 @@ export default function Jobs() {
       paused: 'default',
       completed: 'success',
       failed: 'error',
+      scheduled: 'secondary',
     };
     return <Chip label={status} color={colorMap[status] as any} />;
   };
@@ -255,7 +257,7 @@ export default function Jobs() {
                     <TableCell>Status</TableCell>
                     <TableCell>Progress</TableCell>
                     <TableCell>Messages</TableCell>
-                    <TableCell>Created At</TableCell>
+                    <TableCell>Date</TableCell>
                     <TableCell>Actions</TableCell>
                   </TableRow>
                 </TableHead>
@@ -289,7 +291,18 @@ export default function Jobs() {
                           {job.messages_sent || 0} / {job.messages_planned || job.total_tasks || 0}
                         </Typography>
                       </TableCell>
-                      <TableCell>{new Date(job.created_at).toLocaleString()}</TableCell>
+                      <TableCell>
+                        <Box>
+                          <Typography variant="body2">
+                            {new Date(job.created_at).toLocaleString()}
+                          </Typography>
+                          {job.scheduled_at && job.status === 'scheduled' && (
+                            <Typography variant="caption" color="text.secondary">
+                              Sched: {new Date(job.scheduled_at).toLocaleString()}
+                            </Typography>
+                          )}
+                        </Box>
+                      </TableCell>
                       <TableCell>
                         {job.status === 'running' || job.status === 'processing' ? (
                           <IconButton onClick={() => handlePause(job.id)} size="small">

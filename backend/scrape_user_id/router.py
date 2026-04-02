@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
+from typing import Optional
 from pydantic import BaseModel
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
@@ -26,6 +27,7 @@ class VerifyScrapeRequest(BaseModel):
 class ScrapeWithAccountRequest(BaseModel):
     account_id: int
     group_username: str
+    scheduled_at: Optional[str] = None
 
 @router.post("/start-auth")
 async def start_auth(request: StartAuthRequest, current_user: User = Depends(plan_based_dependency("scrape"))):
@@ -70,12 +72,29 @@ async def scrape_with_account(
         from models import Job
         import json
         
+        # Parse scheduled_at if provided
+        scheduled_at_dt = None
+        if request.scheduled_at:
+            try:
+                from datetime import datetime
+                import pytz
+                scheduled_at_dt = datetime.fromisoformat(request.scheduled_at.replace('Z', '+00:00'))
+                if scheduled_at_dt.tzinfo is not None:
+                    scheduled_at_dt = scheduled_at_dt.astimezone(pytz.utc).replace(tzinfo=None)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid scheduled_at format. Use ISO8601, e.g. 2026-03-20T10:00:00Z")
+
+        from datetime import datetime
+        is_scheduled = scheduled_at_dt is not None and scheduled_at_dt > datetime.utcnow()
+        initial_status = 'scheduled' if is_scheduled else 'pending'
+
         new_job = Job(
             user_id=current_user.id,
             telegram_account_id=account.id,
             job_type='scrape_users',
             config=json.dumps({'group_username': request.group_username}),
-            status='pending',
+            status=initial_status,
+            scheduled_at=scheduled_at_dt,
             user_description=f"Scraping users from {request.group_username}"
         )
         db.add(new_job)
@@ -83,8 +102,9 @@ async def scrape_with_account(
         db.refresh(new_job)
         
         # Dispatch the task
-        from scrape_user_id.tasks import scrape_users_task
-        scrape_users_task.delay(new_job.id)
+        if not is_scheduled:
+            from scrape_user_id.tasks import scrape_users_task
+            scrape_users_task.delay(new_job.id)
         
         return {
             "success": True,

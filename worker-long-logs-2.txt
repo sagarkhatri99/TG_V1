@@ -1,0 +1,78 @@
+/usr/local/lib/python3.12/site-packages/celery/platforms.py:829: SecurityWarning: You're running the worker with superuser privileges: this is
+absolutely not recommended!
+
+Please specify a different user using the --uid option.
+
+User information: uid=0 euid=0 gid=0 egid=0
+
+  warnings.warn(SecurityWarning(ROOT_DISCOURAGED.format(
+ 
+ -------------- celery@f8d7f31ea8f6 v5.3.6 (emerald-rush)
+--- ***** ----- 
+-- ******* ---- Linux-5.15.167.4-microsoft-standard-WSL2-x86_64-with-glibc2.41 2026-03-18 01:38:16
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         worker:0x7f8adcab1160
+- ** ---------- .> transport:   redis://redis:6379/0
+- ** ---------- .> results:     redis://redis:6379/0
+- *** --- * --- .> concurrency: 1 (prefork)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> long_tasks       exchange=celery(direct) key=long.#
+                
+
+[tasks]
+  . auto_promo.tasks.auto_promo_task
+  . core.cleanup_tasks.cleanup_stuck_jobs
+  . core.cleanup_tasks.worker_health_check
+  . group_joiner.tasks.group_join_task
+  . group_monitor.tasks.group_monitor_task
+  . mass_dm_account.tasks.mass_dm_account_task
+  . mass_dm_bot.tasks.mass_dm_bot_task
+  . scrape_user_id.tasks.scrape_users_task
+  . tasks.maintenance_tasks.cleanup_old_jobs
+  . tasks.maintenance_tasks.reset_daily_limits
+
+[2026-03-18 01:38:16,369: WARNING/MainProcess] /usr/local/lib/python3.12/site-packages/celery/worker/consumer/consumer.py:507: CPendingDeprecationWarning: The broker_connection_retry configuration setting will no longer determine
+whether broker connection retries are made during startup in Celery 6.0 and above.
+If you wish to retain the existing behavior for retrying connections on startup,
+you should set broker_connection_retry_on_startup to True.
+  warnings.warn(
+
+[2026-03-18 01:38:16,403: INFO/MainProcess] Connected to redis://redis:6379/0
+[2026-03-18 01:38:16,405: WARNING/MainProcess] /usr/local/lib/python3.12/site-packages/celery/worker/consumer/consumer.py:507: CPendingDeprecationWarning: The broker_connection_retry configuration setting will no longer determine
+whether broker connection retries are made during startup in Celery 6.0 and above.
+If you wish to retain the existing behavior for retrying connections on startup,
+you should set broker_connection_retry_on_startup to True.
+  warnings.warn(
+
+[2026-03-18 01:38:16,412: INFO/MainProcess] mingle: searching for neighbors
+[2026-03-18 01:38:17,430: INFO/MainProcess] mingle: all alone
+[2026-03-18 01:38:17,449: INFO/MainProcess] celery@f8d7f31ea8f6 ready.
+[2026-03-18 01:38:34,006: INFO/MainProcess] Events of group {task} enabled by remote.
+[2026-03-18 01:48:25,945: INFO/MainProcess] Task group_joiner.tasks.group_join_task[ecfdfbb7-7e6d-45af-b87a-57c9098e1c21] received
+[2026-03-18 01:48:26,046: INFO/ForkPoolWorker-1] Starting group join job 48 for account 9
+[2026-03-18 01:48:26,062: INFO/ForkPoolWorker-1] Using StringSession for account 9
+[2026-03-18 01:48:26,063: INFO/ForkPoolWorker-1] Connecting to 91.108.56.101:443/TcpFull...
+[2026-03-18 01:48:26,240: INFO/ForkPoolWorker-1] Connection to 91.108.56.101:443/TcpFull complete!
+[2026-03-18 01:48:27,293: WARNING/ForkPoolWorker-1] Job 48: Cannot join @VedSwift24: AttributeError
+[2026-03-18 01:48:27,306: INFO/ForkPoolWorker-1] Job 48: Waiting 41s before next join...
+[2026-03-18 01:49:08,363: WARNING/ForkPoolWorker-1] Job 48: Cannot join @vipmonitoring_chat: AttributeError
+[2026-03-18 01:49:08,373: INFO/ForkPoolWorker-1] Job 48: Waiting 54s before next join...
+[2026-03-18 01:50:02,462: WARNING/ForkPoolWorker-1] Job 48: Cannot join @vtb_perm_ipoteka: AttributeError
+[2026-03-18 01:50:02,464: INFO/ForkPoolWorker-1] Job 48: Waiting 60s before next join...
+[2026-03-18 01:51:02,605: WARNING/ForkPoolWorker-1] Job 48: Cannot join @vzyatcredi: AttributeError
+[2026-03-18 01:51:02,610: INFO/ForkPoolWorker-1] Job 48: Waiting 49s before next join...
+[2026-03-18 01:51:51,733: WARNING/ForkPoolWorker-1] Job 48: Cannot join @World_Trading_Chat: AttributeError
+[2026-03-18 01:51:51,735: INFO/ForkPoolWorker-1] Job 48: Waiting 52s before next join...
+[2026-03-18 01:52:43,816: WARNING/ForkPoolWorker-1] Job 48: Cannot join @Yur_podderzhka: AttributeError
+[2026-03-18 01:52:43,825: INFO/ForkPoolWorker-1] Job 48: Waiting 31s before next join...
+[2026-03-18 01:53:14,875: WARNING/ForkPoolWorker-1] Job 48: Cannot join @zaim2: AttributeError
+[2026-03-18 01:53:14,884: INFO/ForkPoolWorker-1] Job 48: Waiting 47s before next join...
+[2026-03-18 01:54:01,925: INFO/ForkPoolWorker-1] Group join job 48 stopped externally at 7/14
+[2026-03-18 01:54:01,925: INFO/ForkPoolWorker-1] Disconnecting from 91.108.56.101:443/TcpFull...
+[2026-03-18 01:54:01,926: INFO/ForkPoolWorker-1] Disconnection from 91.108.56.101:443/TcpFull complete!
+[2026-03-18 01:54:01,928: INFO/ForkPoolWorker-1] Job 48 group join complete: Joined: 0, Already member: 0, Failed: 7. Failures: @VedSwift24: AttributeError; @vipmonitoring_chat: AttributeError; @vtb_perm_ipoteka: AttributeError
+[2026-03-18 01:54:01,945: INFO/ForkPoolWorker-1] Group join job 48 completed
+[2026-03-18 01:54:01,959: INFO/ForkPoolWorker-1] Task group_joiner.tasks.group_join_task[ecfdfbb7-7e6d-45af-b87a-57c9098e1c21] succeeded in 335.4844307380008s: None

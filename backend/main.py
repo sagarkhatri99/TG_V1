@@ -21,6 +21,7 @@ from routers.admin import router as admin_router
 from routers.subscriptions import router as subscriptions_router
 from routers.health import router as health_router
 from routers.templates import router as templates_router
+from group_joiner.router import router as group_joiner_router
 from core.session_manager import session_manager
 from core.config import settings
 from core.logging import setup_json_logging, get_logger, set_correlation_id
@@ -157,6 +158,7 @@ app.include_router(admin_router, prefix="/api/admin", tags=["Admin"])
 app.include_router(subscriptions_router, prefix="/api/subscriptions", tags=["Subscriptions"])
 app.include_router(templates_router)
 app.include_router(health_router)  # Health router has its own prefix
+app.include_router(group_joiner_router, prefix="/api/group-joiner", tags=["Group Joiner"])
 
 if __name__ == "__main__":
     import uvicorn

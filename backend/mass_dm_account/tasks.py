@@ -22,7 +22,8 @@ import os
 from datetime import datetime, timedelta
 import asyncio
 from telethon.errors import FloodWaitError, UserPrivacyRestrictedError, UserIsBotError, UserBlockedError, ChatWriteForbiddenError
-from core.account_protection import rate_limiter, AccountHealthStatus
+from celery.exceptions import SoftTimeLimitExceeded
+from core.account_protection import rate_limiter, AccountHealthStatus, sync_health_to_db
 from utils.template_processor import process_template_variations
 
 logger = logging.getLogger(__name__)
@@ -222,6 +223,10 @@ async def _send_message_with_retry(
             if not should_continue:
                 result_dict['should_stop'] = True
                 result_dict['stop_reason'] = f"FLOOD PROTECTION ENGAGED: {action}"
+                # Sync health to DB on critical flood stop
+                sync_health_to_db(account_id, db, extra_stats={
+                    "messages_sent_today": result_dict.get('sent', 0)
+                })
                 return (uid_original, False, f"Account protection triggered: {action}")
             
             # If continuing, use extended backoff delay
@@ -529,6 +534,20 @@ def mass_dm_account_task(self, job_id: int):
         db.commit()
         logger.info(f"Mass DM job {job_id} completed successfully")
         
+    except SoftTimeLimitExceeded:
+        logger.warning(f"Mass DM job {job_id} hit soft time limit — pausing with progress saved")
+        try:
+            job = db.query(Job).filter(Job.id == job_id).first()
+            if job:
+                job.status = 'paused'
+                job.error_message = (
+                    f"Paused: Celery soft time limit reached. "
+                    f"Progress saved: {job.messages_sent}/{job.messages_planned} messages sent."
+                )
+                db.commit()
+        except Exception as pause_err:
+            logger.error(f"Failed to pause job {job_id} on SoftTimeLimitExceeded: {pause_err}")
+
     except Exception as e:
         logger.error(f"Mass DM job {job_id} failed: {type(e).__name__}: {e}", exc_info=True)
         if db and job:
@@ -543,6 +562,10 @@ def mass_dm_account_task(self, job_id: int):
         # Cleanup
         try:
             if account_id and loop:
+                # Sync final account health before disconnecting
+                sync_health_to_db(account_id, db, extra_stats={
+                    "messages_sent_today": job.messages_sent if job else 0
+                })
                 logger.info(f"Disconnecting client for account {account_id}")
                 loop.run_until_complete(session_manager.disconnect_client(account_id))
         except Exception as cleanup_err:

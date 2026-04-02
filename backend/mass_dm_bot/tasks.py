@@ -13,6 +13,7 @@ import json
 import os
 from datetime import datetime, timedelta
 import logging
+from celery.exceptions import SoftTimeLimitExceeded
 from utils.template_processor import process_template_variations
 
 logger = logging.getLogger(__name__)
@@ -127,6 +128,19 @@ def mass_dm_bot_task(self, job_id: int):
             job.status = 'completed'
         job.completed_at = datetime.utcnow()
         db.commit()
+
+    except SoftTimeLimitExceeded:
+        logger.warning(f"Mass DM Bot job {job_id} hit soft time limit — pausing with progress saved")
+        try:
+            if job:
+                job.status = 'paused'
+                job.error_message = (
+                    f"Paused: Celery soft time limit reached. "
+                    f"Progress saved: {job.messages_sent or 0}/{job.messages_planned or 0} messages sent."
+                )
+                db.commit()
+        except Exception as pause_err:
+            logger.error(f"Failed to pause mass_dm_bot job {job_id} on SoftTimeLimitExceeded: {pause_err}")
 
     except MassDMBotError as e:
         logger.error(f"Mass DM Bot job {job.id} finished with errors: {e.errors}")

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -16,11 +16,14 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  IconButton,
+  Tooltip,
 } from '@mui/material';
 import {
   CheckCircle as HealthyIcon,
   Warning as WarningIcon,
   Error as ErrorIcon,
+  Refresh as RefreshIcon,
 } from '@mui/icons-material';
 import api from '../api/Index';
 
@@ -48,26 +51,34 @@ interface AccountHealth {
 
 export default function HealthDashboard() {
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [healthData, setHealthData] = useState<AccountHealth[]>([]);
   const [alert, setAlert] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   useEffect(() => {
     fetchHealthData();
+    // Auto-refresh every 30 seconds
+    const interval = setInterval(() => fetchHealthData(true), 30000);
+    return () => clearInterval(interval);
   }, []);
 
-  const fetchHealthData = async () => {
+  const fetchHealthData = useCallback(async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
+      else setRefreshing(true);
       const response = await api.get('/api/health/accounts');
       setHealthData(response.data || []);
+      setLastUpdated(new Date());
     } catch (error: any) {
       console.error('Failed to fetch health data:', error);
       setAlert({ type: 'error', message: error.response?.data?.detail || 'Failed to load health data' });
       setHealthData([]);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  };
+  }, []);
 
   const getHealthColor = (score: number) => {
     if (score >= 80) return 'success';
@@ -106,11 +117,23 @@ export default function HealthDashboard() {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>
-        Account Health Dashboard
-      </Typography>
+      <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
+        <Typography variant="h4">Account Health Dashboard</Typography>
+        <Box display="flex" alignItems="center" gap={1}>
+          {lastUpdated && (
+            <Typography variant="caption" color="text.secondary">
+              Updated {lastUpdated.toLocaleTimeString()}
+            </Typography>
+          )}
+          <Tooltip title="Refresh now">
+            <IconButton onClick={() => fetchHealthData(true)} disabled={refreshing || loading}>
+              {refreshing ? <CircularProgress size={20} /> : <RefreshIcon />}
+            </IconButton>
+          </Tooltip>
+        </Box>
+      </Box>
       <Typography variant="body2" color="text.secondary" gutterBottom sx={{ mb: 3 }}>
-        Monitor account health scores, API usage, and error rates
+        Monitor account health scores, API usage, and error rates. Auto-refreshes every 30s.
       </Typography>
 
       {alert && (

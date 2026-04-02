@@ -17,13 +17,18 @@ router = APIRouter()
 
 class ProxyCreate(BaseModel):
     proxy_url: str
-    proxy_type: str = "socks5" # Default to socks5
+    proxy_type: str = "socks5"  # Always enforced as socks5 on backend
     country_code: str = "US"
+    name: Optional[str] = None  # Optional human-readable label
+
+class ProxyRename(BaseModel):
+    name: str
 
 class ProxyOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     
     id: int
+    name: Optional[str] = None
     proxy_url: str
     proxy_type: str
     country_code: str
@@ -42,7 +47,8 @@ async def create_proxy(proxy: ProxyCreate, db: Session = Depends(get_db), curren
     db_proxy = Proxy(
         proxy_url=proxy.proxy_url,
         proxy_type=final_type,
-        country_code=proxy.country_code
+        country_code=proxy.country_code,
+        name=proxy.name or None
     )
     db.add(db_proxy)
     db.commit()
@@ -53,6 +59,18 @@ async def create_proxy(proxy: ProxyCreate, db: Session = Depends(get_db), curren
 async def list_proxies(db: Session = Depends(get_db), current_user: User = Depends(plan_based_dependency("proxies"))):
     proxies = db.query(Proxy).all()
     return proxies
+
+@router.put("/{proxy_id}/rename")
+async def rename_proxy(proxy_id: int, body: ProxyRename, db: Session = Depends(get_db), current_user: User = Depends(plan_based_dependency("proxies"))):
+    """Rename/relabel a proxy for easier identification"""
+    proxy = db.query(Proxy).filter(Proxy.id == proxy_id).first()
+    if not proxy:
+        raise HTTPException(status_code=404, detail="Proxy not found")
+    
+    proxy.name = body.name.strip()
+    db.commit()
+    db.refresh(proxy)
+    return {"status": "success", "message": f"Proxy renamed to '{proxy.name}'", "id": proxy.id, "name": proxy.name}
 
 @router.post("/{proxy_id}/test")
 async def test_proxy(proxy_id: int, db: Session = Depends(get_db), current_user: User = Depends(plan_based_dependency("proxies"))):

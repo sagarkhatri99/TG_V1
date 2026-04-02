@@ -51,3 +51,12 @@ flower_persistent = True  # Keep stats across restarts
 flower_db = "flower_db"  # Store stats in redis key
 flower_max_tasks = 100000  # Keep last 100k tasks in memory
 flower_enable_events = True  # Enable Celery event monitoring
+
+# Celery Beat periodic tasks
+beat_schedule = {
+    # Dispatch scheduled jobs every 60 seconds
+    'dispatch-scheduled-jobs': {
+        'task': 'tasks.scheduler.dispatch_scheduled_jobs',
+        'schedule': 60.0,  # Every 60 seconds
+    },
+}

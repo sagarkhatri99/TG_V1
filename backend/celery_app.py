@@ -15,6 +15,7 @@ celery_app = Celery(
         'mass_dm_account.tasks',
         'mass_dm_bot.tasks',
         'scrape_user_id.tasks',
+        'group_joiner.tasks',
         'core.cleanup_tasks',
         'tasks.maintenance_tasks',  # Daily health reset and cleanup
     ]
@@ -33,8 +34,8 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
     task_acks_late=True,
     worker_max_tasks_per_child=100,  # Faster worker recycling
-    task_soft_time_limit=3600,  # 1 hour soft limit
-    task_time_limit=7200,       # 2 hour hard limit
+    task_soft_time_limit=21600,  # 6 hour soft limit (raises SoftTimeLimitExceeded)
+    task_time_limit=43200,       # 12 hour hard limit (kills worker process)
     worker_log_format='[%(asctime)s: %(levelname)s/%(processName)s] %(message)s',
     worker_task_log_format='[%(asctime)s: %(levelname)s/%(processName)s][%(task_name)s(%(task_id)s)] %(message)s',
     task_queues=(
@@ -69,6 +70,7 @@ celery_app.conf.update(
         'mass_dm_account.tasks.mass_dm_account_task': {'queue': 'long_tasks'},
         'mass_dm_bot.tasks.mass_dm_bot_task': {'queue': 'long_tasks'},
         'scrape_user_id.tasks.scrape_users_task': {'queue': 'short_tasks'},
+        'group_joiner.tasks.group_join_task': {'queue': 'long_tasks'},
         'core.cleanup_tasks.*': {'queue': 'celery'},
     },
 )

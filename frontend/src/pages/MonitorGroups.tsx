@@ -31,6 +31,7 @@ export default function MonitorGroups() {
     monitored_users: [] as string[],
     limit: '100',
     days: '7', // default to 7 days
+    scheduled_at: '',
   });
 
   const [currentGroup, setCurrentGroup] = useState('');
@@ -88,6 +89,7 @@ export default function MonitorGroups() {
         monitored_users: formData.monitored_users,
         limit: parseInt(formData.limit),
         days: parseInt(formData.days),
+        scheduled_at: formData.scheduled_at ? new Date(formData.scheduled_at).toISOString() : null,
       });
       setAlert({ type: 'success', message: response.data.message || 'Job created successfully!' });
       // Optionally reset form
@@ -238,6 +240,16 @@ export default function MonitorGroups() {
                   Past 7 days
                 </Button>
               </Box>
+              <TextField
+                fullWidth
+                label="Schedule For (Optional)"
+                type="datetime-local"
+                InputLabelProps={{ shrink: true }}
+                value={formData.scheduled_at}
+                onChange={(e) => setFormData({ ...formData, scheduled_at: e.target.value })}
+                helperText="Leave empty to run immediately"
+                sx={{ mb: 3 }}
+              />
 
               <Button
                 variant="contained"

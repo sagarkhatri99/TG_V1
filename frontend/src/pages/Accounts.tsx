@@ -103,7 +103,9 @@ export default function Accounts() {
     try {
       const formData = new FormData();
       Object.entries(createForm).forEach(([key, value]) => {
-        formData.append(key, (value as any).toString());
+        if (value !== '' && value !== null && value !== undefined) {
+          formData.append(key, (value as any).toString());
+        }
       });
 
 

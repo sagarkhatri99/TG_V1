@@ -22,7 +22,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Tuple, Optional
 from sqlalchemy.orm import Session
-from models import TelegramAccount
+from models import TelegramAccount, AccountHealth
 from database import SessionLocal
 import enum
 
@@ -264,6 +264,99 @@ class TelegramRateLimiter:
             "current_max_delay": stats["max_delay_current"],
             "recent_incidents": stats["flood_incidents"][-3:],  # Last 3 incidents
         }
+
+
+def sync_health_to_db(account_id: int, db: Session, extra_stats: dict = None) -> None:
+    """
+    Persist the in-memory rate limiter stats to the AccountHealth database table.
+    This is the fix for health_score always staying at 100.0.
+
+    Call this:
+    - After each flood incident (handle_flood_incident)
+    - At job completion / failure
+    - After a batch of messages is sent
+
+    :param account_id: TelegramAccount.id
+    :param db: SQLAlchemy session
+    :param extra_stats: Optional dict with keys:
+        - messages_sent_today (int)
+        - groups_joined_today (int)
+        - api_calls_today (int)
+    """
+    try:
+        if account_id not in rate_limiter.account_stats:
+            return  # No stats to sync yet
+
+        stats = rate_limiter.account_stats[account_id]
+        health = db.query(AccountHealth).filter(AccountHealth.account_id == account_id).first()
+
+        if not health:
+            health = AccountHealth(account_id=account_id)
+            db.add(health)
+
+        # Derive error counts from incidents
+        flood_wait_count = stats.get("consecutive_floods", 0)
+        spam_error_count = sum(1 for i in stats.get("flood_incidents", []) if i.get("severity") in ("high", "critical"))
+        generic_error_count = 0
+
+        # Status mapping
+        health_status_map = {
+            AccountHealthStatus.HEALTHY: "healthy",
+            AccountHealthStatus.WARNED: "warning",
+            AccountHealthStatus.THROTTLED: "warning",
+            AccountHealthStatus.SUSPENDED: "restricted",
+            AccountHealthStatus.RESTRICTED: "restricted",
+        }
+        in_memory_status = stats.get("health_status", AccountHealthStatus.HEALTHY)
+        new_status = health_status_map.get(in_memory_status, "healthy")
+
+        # Calculate health score (starts at 100 and penalises errors)
+        score = 100.0
+        score -= flood_wait_count * 5      # -5 per consecutive flood
+        score -= spam_error_count * 15     # -15 per high/critical flood (spam behaviour)
+        if new_status in ("restricted", "banned"):
+            score -= 30
+        score = max(0.0, min(100.0, score))
+
+        # Apply updates to DB record
+        health.health_score = score
+        health.status = new_status
+        health.flood_wait_count = flood_wait_count
+        health.spam_error_count = spam_error_count
+        health.last_activity = datetime.utcnow()
+        health.updated_at = datetime.utcnow()
+
+        if extra_stats:
+            if "messages_sent_today" in extra_stats:
+                health.messages_sent_today = extra_stats["messages_sent_today"]
+            if "groups_joined_today" in extra_stats:
+                health.groups_joined_today = extra_stats["groups_joined_today"]
+            if "api_calls_today" in extra_stats:
+                health.api_calls_today = extra_stats["api_calls_today"]
+
+        # Append to error_history if there was a recent incident
+        if stats.get("flood_incidents"):
+            latest_incident = stats["flood_incidents"][-1]
+            entry = {
+                "time": latest_incident["timestamp"].isoformat() if isinstance(latest_incident["timestamp"], datetime) else str(latest_incident["timestamp"]),
+                "type": "flood_wait",
+                "severity": latest_incident.get("severity", "unknown"),
+                "wait_seconds": latest_incident.get("wait_seconds", 0),
+                "job_id": latest_incident.get("job_id"),
+            }
+            history = health.error_history or []
+            # Keep last 50 entries
+            history = history[-49:] + [entry]
+            health.error_history = history
+
+        db.commit()
+        logger.debug(f"sync_health_to_db: account {account_id} → score={score:.1f}, status={new_status}")
+    except Exception as e:
+        logger.error(f"sync_health_to_db failed for account {account_id}: {e}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
 
 
 # Global instance

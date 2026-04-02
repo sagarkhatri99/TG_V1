@@ -39,6 +39,7 @@ export default function AutoPromo() {
     max_interval: '300',
     stop_after_hours: '',
     rate_limit_per_hour: '20',
+    scheduled_at: '',
   });
 
   useEffect(() => {
@@ -127,6 +128,15 @@ export default function AutoPromo() {
     }
     if (formData.rate_limit_per_hour) {
       apiFormData.append('rate_limit_per_hour', formData.rate_limit_per_hour);
+    }
+    if (formData.scheduled_at) {
+      try {
+        apiFormData.append('scheduled_at', new Date(formData.scheduled_at).toISOString());
+      } catch (e) {
+        setAlert({ type: 'error', message: 'Invalid schedule date.' });
+        setLoading(false);
+        return;
+      }
     }
     if (imageFile) {
       apiFormData.append('image_file', imageFile);
@@ -301,14 +311,25 @@ export default function AutoPromo() {
               />
             )}
 
-            <TextField
-              fullWidth
-              label="Rate Limit (msg/hr)"
-              type="number"
-              placeholder="e.g., 20"
-              value={formData.rate_limit_per_hour}
-              onChange={(e) => setFormData({ ...formData, rate_limit_per_hour: e.target.value })}
-            />
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <TextField
+                fullWidth
+                label="Rate Limit (msg/hr)"
+                type="number"
+                placeholder="e.g., 20"
+                value={formData.rate_limit_per_hour}
+                onChange={(e) => setFormData({ ...formData, rate_limit_per_hour: e.target.value })}
+              />
+              <TextField
+                fullWidth
+                label="Schedule For (Optional)"
+                type="datetime-local"
+                InputLabelProps={{ shrink: true }}
+                value={formData.scheduled_at}
+                onChange={(e) => setFormData({ ...formData, scheduled_at: e.target.value })}
+                helperText="Leave empty to run immediately"
+              />
+            </Box>
 
             <Box>
               <TextField

@@ -29,6 +29,7 @@ export default function ScrapeUsers() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [selectedAccount, setSelectedAccount] = useState<number | ''>('');
   const [groupUsername, setGroupUsername] = useState('');
+  const [scheduledAt, setScheduledAt] = useState('');
   const [loadingAccounts, setLoadingAccounts] = useState(true);
 
 
@@ -62,6 +63,7 @@ export default function ScrapeUsers() {
       const response = await api.post('/api/scrape-users/scrape-with-account', {
         account_id: selectedAccount,
         group_username: groupUsername,
+        scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
       });
       setAlert({
         type: 'success',
@@ -71,6 +73,7 @@ export default function ScrapeUsers() {
       setTimeout(() => {
         setSelectedAccount('');
         setGroupUsername('');
+        setScheduledAt('');
       }, 3000);
     } catch (error: any) {
       setAlert({ type: 'error', message: error.response?.data?.detail || 'Scraping failed' });
@@ -126,6 +129,16 @@ export default function ScrapeUsers() {
                 value={groupUsername}
                 onChange={(e) => setGroupUsername(e.target.value)}
                 helperText="Enter the Telegram group username or link"
+              />
+
+              <TextField
+                fullWidth
+                label="Schedule For (Optional)"
+                type="datetime-local"
+                InputLabelProps={{ shrink: true }}
+                value={scheduledAt}
+                onChange={(e) => setScheduledAt(e.target.value)}
+                helperText="Leave empty to run immediately"
               />
 
               <Button

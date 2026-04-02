@@ -39,6 +39,7 @@ export default function MassDMDistributed() {
     use_random_interval: false,
     min_delay_seconds: '30',
     max_delay_seconds: '120',
+    scheduled_at: '',
   });
 
   useEffect(() => {
@@ -143,6 +144,9 @@ export default function MassDMDistributed() {
     } else if (formData.delay_seconds) {
       apiFormData.append('delay_seconds', formData.delay_seconds);
     }
+    if (formData.scheduled_at) {
+      apiFormData.append('scheduled_at', new Date(formData.scheduled_at).toISOString());
+    }
 
     try {
       const response = await api.post('/api/mass-dm-account/create-distributed-job', apiFormData, {
@@ -166,6 +170,7 @@ export default function MassDMDistributed() {
           use_random_interval: false,
           min_delay_seconds: '30',
           max_delay_seconds: '120',
+          scheduled_at: '',
         });
       }, 2000);
     } catch (error: any) {
@@ -340,6 +345,16 @@ export default function MassDMDistributed() {
                     onChange={(e) => setFormData({ ...formData, delay_seconds: e.target.value })}
                   />
                 )}
+
+                <TextField
+                  fullWidth
+                  label="Schedule For (Optional)"
+                  type="datetime-local"
+                  InputLabelProps={{ shrink: true }}
+                  value={formData.scheduled_at}
+                  onChange={(e) => setFormData({ ...formData, scheduled_at: e.target.value })}
+                  helperText="Leave empty to run immediately"
+                />
 
                 <Button
                   variant="contained"

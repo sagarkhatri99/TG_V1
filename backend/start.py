@@ -34,7 +34,9 @@ def main():
     
     # Run migrations
     print("\n🔄 Running database migrations...")
-    run_cmd("alembic upgrade head", "Applying migrations")
+    if not run_cmd("alembic upgrade head", "Applying migrations"):
+        print("❌ CRITICAL: Database migrations failed! Exiting.")
+        sys.exit(1)
     
     # Initialize users
     print("\n👤 Initializing users...")

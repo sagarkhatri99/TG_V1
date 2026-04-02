@@ -47,7 +47,7 @@ class TelegramAccount(Base):
     ip_last_verified = Column(DateTime, nullable=True)
     
     # Operating Hours
-    sleep_hour_start = Column(Integer, nullable=True, default=0)
+    sleep_hour_start = Column(Integer, nullable=True, default=23)
     sleep_hour_end = Column(Integer, nullable=True, default=7)
     
     user = relationship("User", back_populates="telegram_accounts")
@@ -61,6 +61,7 @@ class Proxy(Base):
     __tablename__ = "proxies"
     
     id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=True)  # Optional human-readable label
     proxy_url = Column(String(500))  # Increased length for long parameterized URLs
     proxy_type = Column(String(10))
     country_code = Column(String(2))
@@ -97,7 +98,8 @@ class Job(Base):
     telegram_account_id = Column(Integer, ForeignKey("telegram_accounts.id"), nullable=True)
     job_type = Column(String(50))
     config = Column(Text)
-    status = Column(String(20), default="pending")
+    status = Column(String(20), default="pending")  # pending, running, paused, completed, failed, scheduled
+    scheduled_at = Column(DateTime, nullable=True)  # If set, job waits until this time before dispatching
     created_at = Column(DateTime, default=datetime.utcnow)
     started_at = Column(DateTime)
     completed_at = Column(DateTime)
@@ -109,6 +111,7 @@ class Job(Base):
     messages_sent = Column(Integer, default=0)  # Actual messages sent
     messages_planned = Column(Integer, default=0)  # Total messages supposed to send
     completion_percentage = Column(Float, default=0.0)  # Calculated percentage
+    celery_task_id = Column(String(255), nullable=True)  # Celery task tracking ID
     # Batch distribution fields
     parent_job_id = Column(Integer, ForeignKey("jobs.id"), nullable=True)  # Link to parent distribution job
     batch_number = Column(Integer, nullable=True)  # Which batch this is (1-indexed)
@@ -135,6 +138,7 @@ class ActionLog(Base):
     account_id = Column(Integer, ForeignKey("telegram_accounts.id"), nullable=False, index=True)
     action_type = Column(String(50), nullable=False)  # join_group, send_message, react, voice, etc.
     action_data = Column(Text, nullable=True)  # JSON data with action details
+    action_details = Column(Text, nullable=True)  # Additional human-readable details
     timestamp = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     success = Column(Boolean, default=True, nullable=False)
     error_message = Column(Text, nullable=True)
