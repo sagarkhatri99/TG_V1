@@ -1,14 +1,22 @@
+import core.db_guard  # noqa: F401 — must be first; patches sqlite3.connect before any other import
 from celery import Celery
+from celery.signals import worker_init
 from celery.schedules import crontab
 import os
+import time
+import logging
 
-# Set the default Django settings module for the 'celery' program.
-os.environ.setdefault('CELERY_CONFIG_MODULE', 'core.config')
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Broker / backend — read from validated settings (no silent defaults)
+# ---------------------------------------------------------------------------
+from core.config import settings as _settings
 
 celery_app = Celery(
     "worker",
-    broker=os.environ.get("CELERY_BROKER_URL", "redis://redis:6379/0"),
-    backend=os.environ.get("CELERY_RESULT_BACKEND", "redis://redis:6379/0"),
+    broker=_settings.CELERY_BROKER_URL,
+    backend=os.environ.get("CELERY_RESULT_BACKEND", _settings.REDIS_URL),
     include=[
         'auto_promo.tasks',
         'group_monitor.tasks',
@@ -75,5 +83,54 @@ celery_app.conf.update(
     },
 )
 
-if __name__ == '__main__':
-    celery_app.start()
+# ---------------------------------------------------------------------------
+# Worker startup: verify DATABASE_URL + wait for DB to be reachable
+# ---------------------------------------------------------------------------
+@worker_init.connect
+def on_worker_init(sender=None, **kwargs):
+    """Log the DATABASE_URL and verify DB connectivity before accepting tasks."""
+    from core.config import settings, mask_db_url
+    from database import engine
+    from sqlalchemy import text
+
+    masked = mask_db_url(settings.DATABASE_URL)
+    logger.info(
+        "✅ [Worker] Starting — DATABASE_URL: %s | host: %s",
+        masked,
+        sender.hostname if sender else "unknown",
+    )
+
+    # Log queue and concurrency info from worker options
+    worker_opts = getattr(sender, "options", {}) or {}
+    queues = worker_opts.get("queues") or os.environ.get("QUEUES", "(default)")
+    concurrency = worker_opts.get("concurrency") or os.environ.get("CELERYD_CONCURRENCY", "(auto)")
+    logger.info("[Worker] Queues: %s | Concurrency: %s", queues, concurrency)
+
+    max_retries = 10
+    retry_interval = 5  # seconds
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            logger.info("✅ [Worker] Database connection verified on attempt %d.", attempt)
+            return
+        except Exception as exc:
+            logger.warning(
+                "⚠️  [Worker] DB not reachable (attempt %d/%d): %s — retrying in %ds...",
+                attempt,
+                max_retries,
+                exc,
+                retry_interval,
+            )
+            if attempt < max_retries:
+                time.sleep(retry_interval)
+
+    raise RuntimeError(
+        f"[Worker] PostgreSQL is not reachable after {max_retries} attempts. "
+        "Worker startup aborted."
+    )
+
+
+if __name__ == "__main__":
+    celery_app.start()

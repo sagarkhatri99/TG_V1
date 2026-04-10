@@ -1,15 +1,27 @@
-import sqlite3
+#!/usr/bin/env python3
+"""
+check_db.py — Diagnostic: inspect the 'proxies' table columns via PostgreSQL.
+
+SQLite is no longer used.  This script connects via SQLAlchemy using the
+DATABASE_URL environment variable (PostgreSQL only).
+"""
+import sys
 import os
 
-db_path = os.path.join(os.getcwd(), '..', 'tg_tools.db')
-print(f"Checking DB at: {db_path}")
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-if not os.path.exists(db_path):
-    print("DB not found")
-else:
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    cursor.execute("PRAGMA table_info(proxies)")
-    for col in cursor.fetchall():
-        print(f"Column: {col[1]} ({col[2]})")
-    conn.close()
+from sqlalchemy import inspect as sa_inspect
+from database import engine
+
+print("Connecting to PostgreSQL via DATABASE_URL...")
+
+inspector = sa_inspect(engine)
+if "proxies" not in inspector.get_table_names():
+    print("Table 'proxies' does not exist.")
+    sys.exit(1)
+
+columns = inspector.get_columns("proxies")
+print(f"Columns in 'proxies' ({len(columns)}):")
+for col in columns:
+    nullable = "" if col["nullable"] else " NOT NULL"
+    print(f"  {col['name']} ({col['type']}){nullable}")

@@ -1,3 +1,4 @@
+import core.db_guard  # noqa: F401 — must be first; patches sqlite3.connect before any other import
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, joinedload
@@ -60,7 +61,47 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
 
 @app.on_event("startup")
 async def startup_event():
-    logger.info("Application startup - JSON logging and rate limiting enabled")
+    import sys
+    from sqlalchemy import text, inspect as sa_inspect
+    from database import engine
+    from core.config import mask_db_url, settings
+
+    # ── 1. Log all critical env vars (masked where sensitive) ─────────────
+    logger.info(
+        "Startup config — DATABASE_URL: %s | REDIS_URL: %s | CELERY_BROKER_URL: %s | ENV: %s",
+        mask_db_url(settings.DATABASE_URL),
+        mask_db_url(settings.REDIS_URL),
+        mask_db_url(settings.CELERY_BROKER_URL),
+        settings.ENVIRONMENT,
+    )
+
+    # ── 2. PostgreSQL-only assertion ───────────────────────────────────────
+    if not settings.DATABASE_URL.startswith("postgresql"):
+        logger.critical("DATABASE_URL is not PostgreSQL. Got: %s", mask_db_url(settings.DATABASE_URL))
+        raise RuntimeError("Only PostgreSQL is supported. Check DATABASE_URL.")
+
+    # ── 3. Verify DB is reachable ──────────────────────────────────────────
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        logger.info("✅ Database connection verified.")
+    except Exception as exc:
+        logger.critical("Cannot connect to database: %s", exc)
+        sys.exit(1)
+
+    # ── 4. Confirm schema exists (migrations run externally via entrypoint) ─
+    inspector = sa_inspect(engine)
+    tables = inspector.get_table_names()
+    if not tables:
+        logger.critical(
+            "No tables found in the database. "
+            "Run migrations before starting the API: alembic upgrade head"
+        )
+        sys.exit(1)
+    logger.info("✅ Schema verified — %d tables present.", len(tables))
+
+    logger.info("✅ Application startup complete.")
+
 
 @app.get("/")
 def read_root():
@@ -69,7 +110,35 @@ def read_root():
 @app.get("/health")
 @limiter.limit("100/minute")
 def health_check(request: Request):
-    return {"status": "ok", "version": "2.0.0"}
+    """Liveness probe — checks DB and Redis connectivity."""
+    from sqlalchemy import text
+    from database import engine
+    import redis as _redis
+    from core.config import settings
+
+    failures: dict = {}
+
+    # DB check
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception as exc:
+        failures["db"] = str(exc)
+
+    # Redis check
+    try:
+        _redis.from_url(settings.REDIS_URL).ping()
+    except Exception as exc:
+        failures["redis"] = str(exc)
+
+    if failures:
+        raise HTTPException(
+            status_code=503,
+            detail={"status": "unhealthy", "failures": failures},
+        )
+
+    return {"status": "ok", "version": "2.0.0", "db": "ok", "redis": "ok"}
+
 
 @app.get("/stats")
 @limiter.limit("30/minute")

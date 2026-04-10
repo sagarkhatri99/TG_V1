@@ -1,111 +1,167 @@
 # TG Tools Backend
 
-This is the backend for the TG Tools application. It is a FastAPI application that provides a REST API for managing Telegram accounts, jobs, and other resources.
+FastAPI application providing a REST API for managing Telegram accounts, jobs, and campaigns.
+
+> **PostgreSQL only** — SQLite is not supported and will cause a hard startup failure.
+
+---
 
 ## Prerequisites
 
-To run this application, you need to have the following installed on your machine:
 - [Docker](https://docs.docker.com/get-docker/)
 - [Docker Compose](https://docs.docker.com/compose/install/)
 
-## Environment Variables
+---
 
-The application uses a `.env` file to manage environment variables. Before running the application, you need to create a `.env` file in the `backend` directory.
+## Required Environment Variables
 
-```
-# backend/.env
+Create `backend/.env` before starting. These three variables are validated at startup — missing any of them will abort the process immediately:
+
+```env
 DATABASE_URL=postgresql://user:password@db:5432/tg_tools
-OPENAI_API_KEY=your_openai_api_key_here
 REDIS_URL=redis://redis:6379/0
+CELERY_BROKER_URL=redis://redis:6379/0
 SECRET_KEY=your-super-secret-key-here
+TELEGRAM_API_ID=your_telegram_api_id
+TELEGRAM_API_HASH=your_telegram_api_hash
+# Optional
+OPENAI_API_KEY=sk-...
 ```
 
-## Building and Running the Application
-
-To build and run the application, you can use Docker Compose. From the root of the repository, run the following command:
+Copy `.env.example` as a starting point:
 
 ```bash
-docker-compose up --build -d
+cp backend/.env.example backend/.env
 ```
 
-This will build the Docker images for the backend, database, and Redis services, and run them in detached mode.
+---
 
-The backend service will be available at `http://localhost:8000`.
+## Deployment
 
-## Running the Worker
-
-The application uses a background worker to process long-running jobs like group monitoring and auto-promo campaigns. The worker needs to be run as a separate process.
-
-To run the worker, you can execute the following command inside the running backend container:
+### Fresh deploy (first time or after volume wipe)
 
 ```bash
-docker-compose exec backend python worker.py
+docker-compose down -v          # destroy all volumes (clean slate)
+docker-compose up --build -d    # build images and start all services
 ```
 
-Alternatively, you can add a new service to the `docker-compose.yml` file to run the worker automatically.
+### Regular update (no data loss)
 
-### Example `docker-compose.yml` with a worker service:
-
-```yaml
-services:
-  # ... other services (backend, db, redis)
-
-  worker:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    command: python worker.py
-    depends_on:
-      - db
-      - redis
-    environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - REDIS_URL=${REDIS_URL}
-      - SECRET_KEY=${SECRET_KEY}
-    volumes:
-      - ./backend:/app
-      - ./job_results:/app/job_results
+```bash
+docker-compose up --build -d    # rebuild images, restart containers
 ```
 
-**Note on Permissions:** The worker process needs to write to the `/app/job_results` directory. If you are using a bind mount to map a local directory to `/app/job_results` (as shown in the example above), you need to ensure that the directory on your host machine has the correct permissions for the user running inside the Docker container.
+### Apply migrations manually (inside running container)
+
+```bash
+docker-compose exec backend alembic upgrade head
+```
+
+Migrations also run automatically in `docker-entrypoint.sh` before the API starts.  
+**If migrations fail, the container will not start** — fix the migration and retry.
+
+### Create a new migration after changing models
+
+```bash
+docker-compose exec backend alembic revision --autogenerate -m "describe your change"
+```
+
+---
+
+## Services
+
+| Service | URL | Description |
+|---|---|---|
+| Backend API | http://localhost:8000 | FastAPI |
+| Flower | http://localhost:5555 | Celery task monitor |
+| PostgreSQL | localhost:5432 | Database |
+| Redis | localhost:6379 | Broker + cache |
+
+---
+
+## Health Check
+
+```
+GET /health
+```
+
+Returns `200 OK` with `{ "status": "ok", "db": "ok", "redis": "ok" }` when fully healthy.  
+Returns `503` with failure details if DB or Redis is unavailable.
+
+```
+GET /api/health/diagnose
+```
+
+Full diagnostic — includes DB, Redis, Celery broker, and active worker checks.
+
+---
+
+## Workers
+
+The application runs multiple Celery worker containers:
+
+| Container | Queue | Concurrency | Purpose |
+|---|---|---|---|
+| `worker` | `celery,default` | 4 | General tasks |
+| `worker-long` | `long_tasks` | 1 | Mass DM, Auto Promo, Group Joiner |
+| `worker-short` | `short_tasks` | 3 | Scraping, Group Monitor |
+| `celery-beat` | — | — | Scheduler |
+
+`worker-long` uses `concurrency=1` — each replica handles one long-running task at a time.  
+Current config scales to **28 replicas** to handle parallel campaigns.
+
+---
+
+## Schema Management
+
+- **Alembic only** — no raw SQL schema creation at runtime.
+- `Base.metadata.create_all()` is not called in production.
+- `init_db.sql` and legacy `final_migrate.py` / `migrate_proxies_v2.py` are deprecated.
+
+---
+
+## Database Connection Pool
+
+Each service process connects via SQLAlchemy `QueuePool`:
+
+| Setting | Value |
+|---|---|
+| `pool_size` | 5 |
+| `max_overflow` | 10 |
+| `pool_timeout` | 30 s |
+| `pool_recycle` | 1800 s |
+| `statement_timeout` | 30 s (PostgreSQL) |
+
+PostgreSQL is configured with `max_connections=500` to handle all worker replicas.
+
+---
 
 ## Running Tests
-
-To run the test suite, you can use `pytest`. The tests are configured to run against the running services in the Docker environment.
-
-Make sure you have installed the dependencies from `backend/requirements.txt` in your local python environment.
-
-From the root of the repository, run the following command:
 
 ```bash
 pytest backend/tests
 ```
 
-## Database Migrations
-
-Database migrations are managed by [Alembic](https://alembic.sqlalchemy.org/). The migrations are located in the `backend/alembic/versions` directory.
-
-When the backend container starts, it automatically applies any pending migrations to the database.
-
-To create a new migration, you can run the following command inside the backend container:
-
-```bash
-docker-compose exec backend alembic revision --autogenerate -m "Your migration message"
-```
+---
 
 ## Troubleshooting
 
-### `permission denied while trying to connect to the Docker daemon socket`
+### `DATABASE_URL environment variable is not set`
+Add `DATABASE_URL=postgresql://...` to `backend/.env`.
 
-This error means that your user does not have permission to access the Docker daemon. You can either run the `docker` and `docker-compose` commands with `sudo`, or you can [add your user to the `docker` group](https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user).
-
-### `toomanyrequests: You have reached your unauthenticated pull rate limit`
-
-This error means that you have made too many anonymous requests to Docker Hub to pull images. To solve this, you need to authenticate with a Docker Hub account.
-
-You can log in to Docker Hub by running the following command:
-
+### `Alembic migration FAILED — aborting startup`
+Run migrations manually to see the full error:
 ```bash
-docker login
+docker-compose exec backend alembic upgrade head
+```
+
+### `No tables found in the database`
+Migrations have not been applied (or the volume was reset without re-migrating):
+```bash
+docker-compose exec backend alembic upgrade head
+```
+
+### Permission denied (Docker daemon)
+```bash
+sudo usermod -aG docker $USER && newgrp docker
 ```
