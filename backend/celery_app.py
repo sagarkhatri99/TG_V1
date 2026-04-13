@@ -1,6 +1,7 @@
 import core.db_guard  # noqa: F401 — must be first; patches sqlite3.connect before any other import
 from celery import Celery
-from celery.signals import worker_init
+from celery.signals import worker_init, task_prerun, task_postrun, task_failure, task_retry
+from core.logging import worker_logger, error_logger
 from celery.schedules import crontab
 import os
 import time
@@ -132,5 +133,21 @@ def on_worker_init(sender=None, **kwargs):
     )
 
 
+@task_prerun.connect
+def on_task_start(task_id, task, args, kwargs, **_):
+    worker_logger.info(f"TASK START | {task.name} | id={task_id}")
+
+@task_postrun.connect
+def on_task_done(task_id, task, retval, state, **_):
+    worker_logger.info(f"TASK DONE  | {task.name} | id={task_id} | state={state}")
+
+@task_failure.connect
+def on_task_fail(task_id, exception, einfo, **_):
+    error_logger.error(f"TASK FAIL  | id={task_id} | error={exception}", exc_info=einfo)
+
+@task_retry.connect
+def on_task_retry(request, reason, **_):
+    worker_logger.warning(f"TASK RETRY | id={request.id} | reason={reason}")
+
 if __name__ == "__main__":
-    celery_app.start()
+    celery_app.start()

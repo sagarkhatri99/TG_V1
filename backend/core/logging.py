@@ -142,3 +142,36 @@ def set_correlation_id_for_context(cid: str) -> None:
 def get_correlation_id() -> Optional[str]:
     """Get correlation ID from current context"""
     return correlation_id_var.get()
+
+
+import logging.handlers
+from pathlib import Path
+
+def get_file_logger(name: str, log_file: str, level=logging.DEBUG) -> logging.Logger:
+    logger = logging.getLogger(name)
+    if logger.handlers:
+        return logger
+    log_dir = Path("/app/logs")
+    log_dir.mkdir(parents=True, exist_ok=True)
+    formatter = logging.Formatter(
+        fmt="%(asctime)s | %(levelname)-8s | %(name)s | %(filename)s:%(lineno)d | %(funcName)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
+    )
+    fh = logging.handlers.RotatingFileHandler(
+        log_dir / log_file, maxBytes=10*1024*1024, backupCount=7, encoding="utf-8"
+    )
+    fh.setFormatter(formatter)
+    fh.setLevel(level)
+    ch = logging.StreamHandler()
+    ch.setFormatter(formatter)
+    ch.setLevel(logging.INFO)
+    logger.setLevel(level)
+    logger.addHandler(fh)
+    logger.addHandler(ch)
+    return logger
+
+api_logger    = get_file_logger("api",    "api.log")
+worker_logger = get_file_logger("worker", "worker.log")
+task_logger   = get_file_logger("tasks",  "tasks.log")
+db_logger     = get_file_logger("db",     "db.log")
+error_logger  = get_file_logger("errors", "errors.log")

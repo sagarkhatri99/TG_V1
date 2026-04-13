@@ -25,7 +25,8 @@ from routers.templates import router as templates_router
 from group_joiner.router import router as group_joiner_router
 from core.session_manager import session_manager
 from core.config import settings
-from core.logging import setup_json_logging, get_logger, set_correlation_id
+from core.logging import setup_json_logging, get_logger, set_correlation_id, api_logger, error_logger
+import time, traceback
 
 from models import TelegramAccount, MessageLog, UserInteraction
 
@@ -53,6 +54,18 @@ async def add_correlation_id(request: Request, call_next):
     await set_correlation_id(request)
     response = await call_next(request)
     return response
+
+@app.middleware("http")
+async def api_logging_middleware(request: Request, call_next):
+    start = time.time()
+    try:
+        response = await call_next(request)
+        ms = round((time.time() - start) * 1000, 2)
+        api_logger.info(f"{request.method} {request.url.path} -> {response.status_code} ({ms}ms)")
+        return response
+    except Exception as e:
+        error_logger.exception(f"Unhandled error on {request.method} {request.url.path}: {e}")
+        raise
 
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded):

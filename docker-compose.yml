@@ -33,6 +33,7 @@ services:
       - ./backend/sessions:/app/sessions
       - ./backend/job_results:/app/job_results
       - ./backend/uploads:/app/uploads
+      - ./logs:/app/logs
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -64,6 +65,7 @@ services:
       - ./backend/sessions:/app/sessions
       - ./backend/job_results:/app/job_results
       - ./backend/uploads:/app/uploads
+      - ./logs:/app/logs
     restart: unless-stopped
     networks:
       - app-network
@@ -91,6 +93,7 @@ services:
       - ./backend/sessions:/app/sessions
       - ./backend/job_results:/app/job_results
       - ./backend/uploads:/app/uploads
+      - ./logs:/app/logs
     restart: unless-stopped
     networks:
       - app-network
@@ -118,6 +121,7 @@ services:
       - ./backend/sessions:/app/sessions
       - ./backend/job_results:/app/job_results
       - ./backend/uploads:/app/uploads
+      - ./logs:/app/logs
     restart: unless-stopped
     networks:
       - app-network
@@ -148,6 +152,7 @@ services:
       - ./backend/sessions:/app/sessions
       - ./backend/job_results:/app/job_results
       - ./backend/uploads:/app/uploads
+      - ./logs:/app/logs
     restart: unless-stopped
     networks:
       - app-network
@@ -168,6 +173,8 @@ services:
         condition: service_healthy
       backend:
         condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5555/api/workers"]
       interval: 30s

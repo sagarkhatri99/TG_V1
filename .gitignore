@@ -159,3 +159,13 @@ test.db
 
 # CSV files
 *.csv
+
+# Logs
+logs/
+*.log
+backend_logs*.txt
+worker-logs*.txt
+worker-short-logs*.txt
+worker-long-logs*.txt
+worker-long-logs-*.txt
+api_out*.txt
