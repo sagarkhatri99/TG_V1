@@ -13,6 +13,7 @@ from typing import Optional
 import shutil
 import os
 from .tasks import mass_dm_account_task
+from core.task_registry import get_queue_for_job
 from .distribution_service import distribute_users_across_accounts
 from datetime import datetime, timedelta
 import csv
@@ -156,7 +157,13 @@ async def create_distributed_mass_dm_job(
                 db.commit()
                 # Dispatch the task to workers only if not scheduled
                 if not is_scheduled:
-                    mass_dm_account_task.delay(job_id)
+                    queue = get_queue_for_job("mass_dm_account", job.telegram_account_id)
+                    celery_result = mass_dm_account_task.apply_async(args=[job_id], queue=queue)
+                    
+                    # Single commit: status and task_id together (Gap 4)
+                    job.status = "queued"
+                    job.celery_task_id = celery_result.id
+                    db.commit()
 
         # Update job counter for pro users
         if current_user.subscription_plan == 'pro':
@@ -304,7 +311,13 @@ async def create_mass_dm_account_job(
 
     # Only dispatch immediately if not scheduled for later
     if not is_scheduled:
-        mass_dm_account_task.delay(new_job.id)
+        queue = get_queue_for_job("mass_dm_account", account_id)
+        celery_result = mass_dm_account_task.apply_async(args=[new_job.id], queue=queue)
+        
+        # Single commit: status and task_id together (Gap 4)
+        new_job.status = "queued"
+        new_job.celery_task_id = celery_result.id
+        db.commit()
 
     return {
         "job_id": new_job.id,

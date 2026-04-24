@@ -76,7 +76,7 @@ services:
     build:
       context: ./backend
       target: worker
-    command: ["celery", "-A", "celery_app", "worker", "-Q", "long_tasks", "-l", "info", "--concurrency=1", "--prefetch-multiplier=1"]
+    command: ["celery", "-A", "celery_app", "worker", "-Q", "${CELERY_ACCOUNT_QUEUES},long_tasks", "-l", "info", "--concurrency=1", "--prefetch-multiplier=1"]
     env_file:
       - ./backend/.env
     environment:
@@ -98,7 +98,7 @@ services:
     networks:
       - app-network
     deploy:
-      replicas: 10
+      replicas: 5
 
   worker-short:
     build:

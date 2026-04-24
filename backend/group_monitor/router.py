@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from fastapi.responses import StreamingResponse
 from .tasks import group_monitor_task
+from core.task_registry import get_queue_for_job
 from datetime import datetime, timedelta
 import os
 
@@ -75,7 +76,13 @@ async def create_group_monitor_job(request: GroupMonitorRequest, db: Session = D
 
     # Only dispatch immediately if not scheduled for later
     if not is_scheduled:
-        group_monitor_task.delay(new_job.id)
+        queue = get_queue_for_job("group_monitor", request.account_id)
+        celery_result = group_monitor_task.apply_async(args=[new_job.id], queue=queue)
+        
+        # Single commit: status and task_id together (Gap 4)
+        new_job.status = "queued"
+        new_job.celery_task_id = celery_result.id
+        db.commit()
 
     if current_user.subscription_plan == 'pro':
         current_user.jobs_created_this_month += 1

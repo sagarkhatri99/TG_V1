@@ -1,180 +1,232 @@
-"""Group Joiner Celery task — joins Telegram groups one by one with spacing."""
+"""
+group_joiner/tasks.py
 
-from celery_app import celery_app
-from sqlalchemy.orm import Session
-from models import Job, TelegramAccount
-from database import SessionLocal
-from core.session_manager import session_manager
+Refactored for stability and serial execution:
+- Fix 1: Single asyncio.run() caller.
+- Fix 3: Short-lived DB sessions (get_short_session).
+- Fix E: AccountSnapshot used for Telethon client creation.
+- Fix A: Redis-based per-account locking.
+- Gap 9: Idempotency guard at task start.
+"""
+
+import asyncio
 import json
 import logging
-import asyncio
+import os
+import random
+import sqlite3
 from datetime import datetime
-from telethon.errors import FloodWaitError, ChannelsTooMuchError, InviteHashInvalidError, UserAlreadyParticipantError
+
+from celery_app import celery_app
+from core.account_lock import acquire_account_lock, release_account_lock, get_lock_holder
+from core.db_utils import get_short_session, snapshot_account
+from core.human_aware_task import HumanAwareTask
+from core.session_manager import session_manager
+from models import Job, TelegramAccount
+from sqlalchemy.orm import joinedload
+from telethon.errors import (
+    ChannelsTooMuchError,
+    FloodWaitError,
+    InviteHashInvalidError,
+    UserAlreadyParticipantError,
+)
 from telethon.tl.functions.channels import JoinChannelRequest
 from telethon.tl.functions.messages import ImportChatInviteRequest
-import random
 
 logger = logging.getLogger(__name__)
 
 
-async def _group_join_runner(job: Job, db: Session):
+async def _group_join_runner(job_id: int, account_snap, config: dict):
     """Async runner: iterates through groups list and joins each one."""
-    account = db.query(TelegramAccount).filter(TelegramAccount.id == job.telegram_account_id).first()
-    if not account:
-        raise Exception("Account not found")
-
-    config = json.loads(job.config)
-    groups: list[str] = config.get('groups', [])
-    min_delay_seconds: int = max(10, config.get('min_delay_seconds', 30))
-    max_delay_seconds: int = max(min_delay_seconds, config.get('max_delay_seconds', 60))
+    groups: list[str] = config.get("groups", [])
+    min_delay_seconds: int = max(10, config.get("min_delay_seconds", 30))
+    max_delay_seconds: int = max(min_delay_seconds, config.get("max_delay_seconds", 60))
 
     if not groups:
-        raise Exception("No groups found in job config")
+        raise ValueError("No groups found in job config")
 
-    job.messages_planned = len(groups)
-    job.messages_sent = 0
-    db.commit()
+    # Initial setup
+    with get_short_session() as db:
+        job = db.query(Job).filter(Job.id == job_id).first()
+        if job:
+            job.messages_planned = len(groups)
+            job.messages_sent = 0
 
-    try:
-        client = await session_manager.get_client(account)
-    except RuntimeError as e:
-        raise Exception(f"Account not authenticated: {str(e)}")
+    client = await session_manager.get_client(account_snap)
 
     joined = 0
     skipped = 0
     failed = []
-    
+
     async def _execute_join(handle: str):
-        if handle.startswith('+'):
+        if handle.startswith("+"):
             await client(ImportChatInviteRequest(handle[1:]))
-        elif handle.lower().startswith('joinchat/'):
-            await client(ImportChatInviteRequest(handle.split('/', 1)[1]))
+        elif handle.lower().startswith("joinchat/"):
+            await client(ImportChatInviteRequest(handle.split("/", 1)[1]))
         else:
-            target = int(handle) if handle.lstrip('-').isdigit() else handle
+            target = int(handle) if handle.lstrip("-").isdigit() else handle
             await client(JoinChannelRequest(target))
 
-    async with client:
-        for i, group_handle in enumerate(groups):
-            # Check job status (allow external pause)
-            db.refresh(job)
-            if job.status != 'running':
-                logger.info(f"Group join job {job.id} stopped externally at {i}/{len(groups)}")
-                break
+    try:
+        async with client:
+            for i, group_handle in enumerate(groups):
+                # Check job status for external pause/cancel
+                with get_short_session() as db:
+                    job = db.query(Job).filter(Job.id == job_id).first()
+                    if not job or job.status != "running":
+                        logger.info(
+                            f"Group join job {job_id} stopped externally at {i}/{len(groups)}"
+                        )
+                        break
 
-            try:
-                await _execute_join(group_handle)
-                joined += 1
-                logger.info(f"Job {job.id}: Joined group {group_handle} ({i+1}/{len(groups)})")
-
-            except UserAlreadyParticipantError:
-                logger.info(f"Job {job.id}: Already in {group_handle}, skipping")
-                skipped += 1
-
-            except ChannelsTooMuchError:
-                msg = "Account has joined too many channels/groups. Telegram limit reached."
-                logger.error(f"Job {job.id}: {msg}")
-                job.error_message = msg
-                job.status = 'failed'
-                db.commit()
-                return
-
-            except FloodWaitError as e:
-                wait = getattr(e, 'seconds', 60)
-                logger.warning(f"Job {job.id}: Flood wait {wait}s before joining {group_handle}")
-                await asyncio.sleep(wait)
-                # Retry once
                 try:
                     await _execute_join(group_handle)
                     joined += 1
-                except Exception as retry_e:
-                    failed.append(f"{group_handle}: retry failed - {retry_e}")
+                    logger.info(
+                        f"Job {job_id}: Joined group {group_handle} ({i+1}/{len(groups)})"
+                    )
 
-            except (InviteHashInvalidError, Exception) as e:
-                err_name = type(e).__name__
-                logger.warning(f"Job {job.id}: Cannot join {group_handle}: {err_name}")
-                failed.append(f"{group_handle}: {err_name}")
+                except UserAlreadyParticipantError:
+                    logger.info(f"Job {job_id}: Already in {group_handle}, skipping")
+                    skipped += 1
 
-            # Update progress after each group
-            job.messages_sent = joined + skipped
-            job.completion_percentage = (job.messages_sent / len(groups)) * 100.0
-            job.progress = int(job.completion_percentage)
-            db.commit()
+                except ChannelsTooMuchError:
+                    msg = "Account has joined too many channels/groups. Telegram limit reached."
+                    logger.error(f"Job {job_id}: {msg}")
+                    with get_short_session() as db:
+                        job = db.query(Job).filter(Job.id == job_id).first()
+                        if job:
+                            job.error_message = msg
+                            job.status = "failed"
+                    return
 
-            # Delay between joins (skip delay after last group)
-            if i < len(groups) - 1:
-                delay = random.randint(min_delay_seconds, max_delay_seconds)
-                logger.info(f"Job {job.id}: Waiting {delay}s before next join...")
-                await asyncio.sleep(delay)
+                except FloodWaitError as e:
+                    wait = getattr(e, "seconds", 60)
+                    logger.warning(
+                        f"Job {job_id}: Flood wait {wait}s before joining {group_handle}"
+                    )
+                    await asyncio.sleep(wait)
+                    # Retry once
+                    try:
+                        await _execute_join(group_handle)
+                        joined += 1
+                    except Exception as retry_e:
+                        failed.append(f"{group_handle}: retry failed - {retry_e}")
 
-    # Final summary
-    summary = f"Joined: {joined}, Already member: {skipped}, Failed: {len(failed)}"
-    if failed:
-        summary += f". Failures: {'; '.join(failed[:3])}"
+                except (InviteHashInvalidError, Exception) as e:
+                    err_name = type(e).__name__
+                    logger.warning(f"Job {job_id}: Cannot join {group_handle}: {err_name}")
+                    failed.append(f"{group_handle}: {err_name}")
 
-    job.messages_sent = joined + skipped
-    job.completion_percentage = (job.messages_sent / len(groups)) * 100.0
-    job.progress = int(job.completion_percentage)
-    job.error_message = summary if failed else None
-    logger.info(f"Job {job.id} group join complete: {summary}")
+                # Update progress after each group
+                with get_short_session() as db:
+                    job = db.query(Job).filter(Job.id == job_id).first()
+                    if job:
+                        job.messages_sent = joined + skipped
+                        job.completion_percentage = (job.messages_sent / len(groups)) * 100.0
+                        job.progress = int(job.completion_percentage)
+
+                # Delay between joins (skip delay after last group)
+                if i < len(groups) - 1:
+                    delay = random.randint(min_delay_seconds, max_delay_seconds)
+                    logger.info(f"Job {job_id}: Waiting {delay}s before next join...")
+                    await asyncio.sleep(delay)
+
+        # Final summary
+        summary = f"Joined: {joined}, Already member: {skipped}, Failed: {len(failed)}"
+        if failed:
+            summary += f". Failures: {'; '.join(failed[:3])}"
+
+        with get_short_session() as db:
+            job = db.query(Job).filter(Job.id == job_id).first()
+            if job:
+                job.messages_sent = joined + skipped
+                job.completion_percentage = (job.messages_sent / len(groups)) * 100.0
+                job.progress = int(job.completion_percentage)
+                if failed:
+                    job.error_message = summary
+                logger.info(f"Job {job_id} group join complete: {summary}")
+
+    finally:
+        # Fix 1: disconnect inside the same async scope
+        await session_manager.disconnect_client(account_snap.id)
 
 
-@celery_app.task(bind=True, max_retries=1, name='group_joiner.tasks.group_join_task')
+@celery_app.task(
+    base=HumanAwareTask,
+    bind=True,
+    max_retries=3,
+    autoretry_for=(ConnectionError, TimeoutError, OSError),
+    retry_backoff=True,
+    retry_jitter=True,
+)
 def group_join_task(self, job_id: int):
     """Celery task wrapper for group join operation."""
-    db: Session = SessionLocal()
     account_id = None
-    loop = None
 
-    try:
+    # ── Gap 9: Idempotency Guard ──────────────────────────────────────────────
+    with get_short_session() as db:
         job = db.query(Job).filter(Job.id == job_id).first()
         if not job:
-            logger.error(f"Group join job {job_id} not found")
+            logger.error(f"group_join_task: job {job_id} not found")
             return
-
+        if job.status not in ("queued", "pending"):
+            logger.warning(
+                f"group_join_task: job {job_id} has status '{job.status}', skipping"
+            )
+            return
         account_id = job.telegram_account_id
-        job.status = 'running'
+        config = json.loads(job.config) if job.config else {}
+        job.status = "running"
         job.started_at = datetime.utcnow()
-        db.commit()
+    # session closed
+
+    # ── Fix A: Per-account Redis Lock ─────────────────────────────────────────
+    if not acquire_account_lock(account_id, job_id):
+        holder = get_lock_holder(account_id)
+        logger.warning(
+            f"group_join_task: account {account_id} locked by {holder}. Job {job_id} will retry."
+        )
+        raise self.retry(countdown=90, max_retries=2)
+
+    try:
+        # ── Fix E: Snapshot Account ───────────────────────────────────────────
+        with get_short_session() as db:
+            account = (
+                db.query(TelegramAccount)
+                .options(joinedload(TelegramAccount.proxy))
+                .filter(TelegramAccount.id == account_id)
+                .first()
+            )
+            if not account:
+                raise RuntimeError(f"Account {account_id} not found")
+            account_snap = snapshot_account(account)
+        # session closed
 
         logger.info(f"Starting group join job {job_id} for account {account_id}")
 
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_closed():
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+        # ── Fix 1: Single asyncio.run() ───────────────────────────────────────
+        asyncio.run(_group_join_runner(job_id, account_snap, config))
 
-        loop.run_until_complete(_group_join_runner(job, db))
-
-        if job.status == 'running':
-            job.status = 'completed'
-            job.completed_at = datetime.utcnow()
-        db.commit()
+        # ── Final Status Update ───────────────────────────────────────────────
+        with get_short_session() as db:
+            job = db.query(Job).filter(Job.id == job_id).first()
+            if job and job.status == "running":
+                job.status = "completed"
+                job.completed_at = datetime.utcnow()
         logger.info(f"Group join job {job_id} completed")
 
     except Exception as e:
-        logger.error(f"Group join job {job_id} failed: {type(e).__name__}: {e}", exc_info=True)
-        if db and job:
-            job.status = 'failed'
-            job.error_message = f"{type(e).__name__}: {str(e)}"
-            try:
-                db.commit()
-            except Exception:
-                pass
+        logger.error(f"group_join_task: job {job_id} failed: {e}")
+        with get_short_session() as db:
+            job = db.query(Job).filter(Job.id == job_id).first()
+            if job:
+                # Do not mark failed if it's a retryable error
+                retryable = (ConnectionError, TimeoutError, OSError)
+                if not isinstance(e, retryable):
+                    job.status = "failed"
+                    job.error_message = str(e)
+        raise e
     finally:
-        try:
-            if account_id and loop:
-                loop.run_until_complete(session_manager.disconnect_client(account_id))
-        except Exception as e:
-            logger.error(f"Cleanup error for group join job {job_id}: {e}")
-        finally:
-            if loop and not loop.is_closed():
-                try:
-                    loop.close()
-                except Exception:
-                    pass
-            if db:
-                db.close()
+        if account_id:
+            release_account_lock(account_id)

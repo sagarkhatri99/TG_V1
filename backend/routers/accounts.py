@@ -14,6 +14,9 @@ from core.dependencies import plan_based_dependency
 from core.ban_prevention import ban_prevention
 from datetime import datetime
 import random
+from core.db_utils import get_short_session, snapshot_account
+from core.task_registry import TASK_MAP, get_queue_for_job
+from importlib import import_module
 
 router = APIRouter()
 
@@ -206,28 +209,40 @@ async def list_accounts(db: Session = Depends(get_db), current_user: User = Depe
 
 @router.post("/{account_id}/test")
 async def test_account_connection(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(plan_based_dependency("accounts"))):
+    # Phase 1: Get snapshot (Short Session 1)
+    # We use the provided 'db' from Depends(get_db) which is fine for this quick read
     account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id, TelegramAccount.user_id == current_user.id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found or not owned by user")
+    
+    account_snap = snapshot_account(account)
+    # We don't close 'db' here because FastAPI manages it, but we won't use it during 'await'
 
     try:
-        client = await session_manager.get_client(account)
+        # Step 2: Telethon operation (No DB session held)
+        client = await session_manager.get_client(account_snap)
         async with client:
             me = await client.get_me()
         
-        account.last_activity = datetime.utcnow()
-        db.commit()
+        # Step 3: Update DB (Short Session 2)
+        with get_short_session() as db2:
+            acc = db2.query(TelegramAccount).filter(TelegramAccount.id == account_id).first()
+            if acc:
+                acc.last_activity = datetime.utcnow()
         
         if me:
             return {"status": "connected", "user_id": me.id, "username": me.username, "first_name": me.first_name}
         else:
             raise HTTPException(status_code=400, detail="Connection test failed: Could not get user info.")
+            
     except Exception as e:
-        account.status = 'error'
-        db.commit()
+        with get_short_session() as db2:
+            acc = db2.query(TelegramAccount).filter(TelegramAccount.id == account_id).first()
+            if acc:
+                acc.status = 'error'
         raise HTTPException(status_code=400, detail=f"Connection test failed: {str(e)}")
     finally:
-        # Always disconnect after a test to avoid leaving a stale client in the cache
+        # Always disconnect after a test
         await session_manager.disconnect_client(account_id)
 
 @router.post("/{account_id}/pause")
@@ -251,23 +266,54 @@ async def pause_account(account_id: int, db: Session = Depends(get_db), current_
 
 @router.post("/{account_id}/resume")
 async def resume_account(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    # Phase 1: Get snapshot
     account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id, TelegramAccount.user_id == current_user.id).first()
     if not account:
         raise HTTPException(status_code=404, detail="Account not found or not owned by user")
+    
+    account_snap = snapshot_account(account)
 
     # Test connection before resuming
     try:
-        client = await session_manager.get_client(account)
+        client = await session_manager.get_client(account_snap)
         async with client:
             me = await client.get_me()
         
         if me:
-            account.status = 'active'
-            account.last_activity = datetime.utcnow()
-            db.commit()
+            # Phase 2: Update account status + Re-dispatch paused jobs
+            dispatched_jobs = []
+            with get_short_session() as db2:
+                acc = db2.query(TelegramAccount).filter(TelegramAccount.id == account_id).first()
+                if acc:
+                    acc.status = 'active'
+                    acc.last_activity = datetime.utcnow()
+                
+                # Re-dispatch paused jobs
+                paused_jobs = db2.query(Job).filter(
+                    Job.telegram_account_id == account_id,
+                    Job.status == 'paused'
+                ).all()
+                
+                for job in paused_jobs:
+                    if job.job_type in TASK_MAP:
+                        try:
+                            module_name, func_name = TASK_MAP[job.job_type]
+                            module = import_module(module_name)
+                            task_func = getattr(module, func_name)
+                            
+                            queue = get_queue_for_job(job.job_type, account_id)
+                            res = task_func.apply_async(args=[job.id], queue=queue)
+                            
+                            job.status = 'queued'
+                            job.celery_task_id = res.id
+                            dispatched_jobs.append(job.id)
+                        except Exception as dispatch_err:
+                            logger.error(f"Failed to re-dispatch job {job.id} during account resume: {dispatch_err}")
+            
             return {
                 "status": "resumed", 
                 "connection_test": "passed",
+                "dispatched_jobs": dispatched_jobs,
                 "user_info": {
                     "user_id": me.id, 
                     "username": me.username, 
@@ -275,15 +321,20 @@ async def resume_account(account_id: int, db: Session = Depends(get_db), current
                 }
             }
         else:
-            account.status = 'error'
-            db.commit()
+            with get_short_session() as db2:
+                acc = db2.query(TelegramAccount).filter(TelegramAccount.id == account_id).first()
+                if acc:
+                    acc.status = 'error'
             raise HTTPException(status_code=400, detail="Connection test failed: Could not get user info")
+            
     except Exception as e:
-        account.status = 'error'
-        db.commit()
+        with get_short_session() as db2:
+            acc = db2.query(TelegramAccount).filter(TelegramAccount.id == account_id).first()
+            if acc:
+                acc.status = 'error'
         error_msg = str(e)
         if "api_id" in error_msg or "api_hash" in error_msg or "API credentials" in error_msg:
-            error_msg = "Invalid or missing Telegram API credentials. Please ensure your account has valid api_id and api_hash configured."
+            error_msg = "Invalid or missing Telegram API credentials."
         raise HTTPException(status_code=400, detail=f"Connection test failed: {error_msg}")
     finally:
         # Always disconnect after test

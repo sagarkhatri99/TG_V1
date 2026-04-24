@@ -9,6 +9,7 @@ from models import User, TelegramAccount, Job
 from routers.auth import get_current_user
 from core.dependencies import plan_based_dependency
 import os
+from core.task_registry import get_queue_for_job
 
 router = APIRouter()
 
@@ -104,7 +105,13 @@ async def scrape_with_account(
         # Dispatch the task
         if not is_scheduled:
             from scrape_user_id.tasks import scrape_users_task
-            scrape_users_task.delay(new_job.id)
+            queue = get_queue_for_job("scrape_users", account.id)
+            celery_result = scrape_users_task.apply_async(args=[new_job.id], queue=queue)
+            
+            # Single commit: status and task_id together (Gap 4)
+            new_job.status = "queued"
+            new_job.celery_task_id = celery_result.id
+            db.commit()
         
         return {
             "success": True,

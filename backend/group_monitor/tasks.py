@@ -1,148 +1,259 @@
-from celery_app import celery_app
-from sqlalchemy.orm import Session
-from models import Job, TelegramAccount
-from database import SessionLocal
-from core.session_manager import session_manager
-from core.human_aware_task import HumanAwareTask
+"""
+group_monitor/tasks.py
+
+Fix 1: Single asyncio.run() — disconnect_client inside runner's finally block.
+Fix 2: Per-process session key (in session_manager).
+Fix 3: Short-lived DB sessions — no session held across iter_messages awaits.
+Fix E: snapshot_account() used before passing account to session_manager.
+Gap 9: Idempotency guard + status='running' set at task start.
+Fix A: Per-account Redis lock.
+"""
+
+import asyncio
+import csv
 import json
 import logging
-import csv
 import os
-import asyncio
+import sqlite3
 from datetime import datetime, timedelta
+
+from celery_app import celery_app
+from core.account_lock import acquire_account_lock, release_account_lock, get_lock_holder
+from core.db_utils import get_short_session, snapshot_account
+from core.human_aware_task import HumanAwareTask
+from core.session_manager import session_manager
+from models import Job, TelegramAccount
+from sqlalchemy.orm import joinedload
 from telethon.errors import FloodWaitError
 
 logger = logging.getLogger(__name__)
 
-async def _group_monitor_runner(job: Job, db: Session):
-    account = db.query(TelegramAccount).filter(TelegramAccount.id == job.telegram_account_id).first()
-    if not account:
-        raise Exception("Account not found")
 
-    config = json.loads(job.config)
-    group_usernames = config.get('group_usernames', [])
-    keywords = config.get('keywords', [])
-    monitored_users = config.get('monitored_users', [])
-    limit = config.get('limit', 100)
-    days = config.get('days')  # optional int
+async def _group_monitor_runner(job_id: int, account_snap, config: dict) -> None:
+    """
+    Async runner for monitoring messages in Telegram groups.
 
-    # Compute offset date if days provided
+    All DB writes use short sessions opened per-operation and immediately
+    closed. No session is held open across iter_messages awaits (Fix 3).
+    disconnect_client is called in this runner's finally block (Fix 1).
+    """
+    group_usernames = config.get("group_usernames", [])
+    keywords = config.get("keywords", [])
+    monitored_users = config.get("monitored_users", [])
+    limit = config.get("limit", 100)
+    days = config.get("days")  # optional int
+
     offset_date = None
     if isinstance(days, int) and days > 0:
         offset_date = datetime.utcnow() - timedelta(days=days)
 
-    client = await session_manager.get_client(account)
-
-    processed_messages = 0
-    error_messages = []
-
-    filename = f"/app/job_results/monitored_messages_job_{job.id}.csv"
+    filename = f"/app/job_results/monitored_messages_job_{job_id}.csv"
     os.makedirs(os.path.dirname(filename), exist_ok=True)
-    # Initialize CSV early so users can download partial results
-    f = open(filename, 'w', encoding='utf-8', newline='')
-    writer = csv.DictWriter(f, fieldnames=["group", "user", "text", "timestamp"])
-    writer.writeheader()
 
-    async with client:
-        for group_username in group_usernames:
-            try:
-                group = await client.get_entity(group_username)
-            except (ValueError, TypeError):
-                logger.warning(f"Could not find group '{group_username}' for job {job.id}. Skipping.")
-                error_messages.append(f"Group '{group_username}' not found.")
-                continue
+    client = await session_manager.get_client(account_snap)
 
-            # When days is specified, iterate through all messages and filter by date
-            # Don't use a hard limit - let the date filter determine how many messages we check
-            actual_limit = None if (days and days > 0) else limit
-            messages_checked = 0
-            matched_count = 0
-            
-            logger.info(f"Starting monitoring for group {group_username}, days={days}, offset_date={offset_date}")
-            
-            async for message in client.iter_messages(group, limit=actual_limit):
-                messages_checked += 1
-                
-                # If we have an offset_date, check if this message is too old
-                if offset_date is not None and message.date:
-                    msg_date = message.date.replace(tzinfo=None)
-                    if msg_date < offset_date:
-                        # Stop iterating once we reach messages older than our cutoff
-                        logger.info(f"Reached messages older than {days} days at message {messages_checked}. Stopping.")
-                        break
-                
-                processed_messages += 1
-                msg_text = message.text or ""
-                sender_username = getattr(message.sender, 'username', None) if message.sender else None
-
-                # Check if message matches keywords or is from monitored users
-                matches = False
-                if keywords and any(keyword.lower() in msg_text.lower() for keyword in keywords):
-                    matches = True
-                if monitored_users and sender_username and sender_username in monitored_users:
-                    matches = True
-                
-                if matches:
-                    matched_count += 1
-                    writer.writerow({
-                        "group": group_username,
-                        "user": sender_username or "Unknown",
-                        "text": msg_text,
-                        "timestamp": message.date.isoformat() if message.date else ""
-                    })
-                    f.flush()
-
-                # Update progress every 50 messages
-                if messages_checked % 50 == 0:
-                    # For time-based queries, we don't know total count, so estimate
-                    if days:
-                        job.progress = min(90, (messages_checked / 1000) * 100)  # Estimate up to 1000 messages per group
-                    else:
-                        total_expected = max(1, (limit * max(1, len(group_usernames))))
-                        job.progress = min(99, (processed_messages / total_expected) * 100)
-                    db.commit()
-            
-            logger.info(f"Finished group {group_username}: checked {messages_checked} messages, matched {matched_count}")
-
-    f.close()
-
-    if error_messages:
-        job.error_message = f"Completed with some errors: {', '.join(error_messages)}"
-        db.commit()
-
-
-@celery_app.task(base=HumanAwareTask, bind=True, max_retries=3)
-def group_monitor_task(self, job_id: int):
-    db: Session = SessionLocal()
-    job = db.query(Job).filter(Job.id == job_id).first()
-    if not job:
-        logger.error(f"Job {job_id} not found.")
-        return
-    
-    account_id = job.telegram_account_id
+    error_messages = []
+    processed_messages = 0
 
     try:
-        job.status = 'running'
-        job.started_at = datetime.utcnow()
-        db.commit()
+        async with client:
+            with open(filename, "w", encoding="utf-8", newline="") as f:
+                writer = csv.DictWriter(
+                    f, fieldnames=["group", "user", "text", "timestamp"]
+                )
+                writer.writeheader()
 
-        asyncio.run(_group_monitor_runner(job, db))
+                for group_username in group_usernames:
+                    try:
+                        group = await client.get_entity(group_username)
+                    except (ValueError, TypeError):
+                        logger.warning(
+                            f"Group monitor job {job_id}: could not find "
+                            f"'{group_username}'. Skipping."
+                        )
+                        error_messages.append(f"Group '{group_username}' not found.")
+                        continue
 
-        job.status = 'completed'
-        job.progress = 100
-        job.completed_at = datetime.utcnow()
-        db.commit()
-        logger.info(f"Group monitor job {job.id} completed successfully.")
+                    actual_limit = None if (days and days > 0) else limit
+                    messages_checked = 0
+                    matched_count = 0
+
+                    logger.info(
+                        f"Group monitor job {job_id}: monitoring '{group_username}', "
+                        f"days={days}"
+                    )
+
+                    async for message in client.iter_messages(
+                        group, limit=actual_limit
+                    ):
+                        messages_checked += 1
+
+                        if offset_date is not None and message.date:
+                            if message.date.replace(tzinfo=None) < offset_date:
+                                logger.info(
+                                    f"Group monitor job {job_id}: reached messages "
+                                    f"older than {days} days at msg {messages_checked}"
+                                )
+                                break
+
+                        processed_messages += 1
+                        msg_text = message.text or ""
+                        sender_username = (
+                            getattr(message.sender, "username", None)
+                            if message.sender
+                            else None
+                        )
+
+                        matches = False
+                        if keywords and any(
+                            kw.lower() in msg_text.lower() for kw in keywords
+                        ):
+                            matches = True
+                        if (
+                            monitored_users
+                            and sender_username
+                            and sender_username in monitored_users
+                        ):
+                            matches = True
+
+                        if matches:
+                            matched_count += 1
+                            writer.writerow(
+                                {
+                                    "group": group_username,
+                                    "user": sender_username or "Unknown",
+                                    "text": msg_text,
+                                    "timestamp": (
+                                        message.date.isoformat()
+                                        if message.date
+                                        else ""
+                                    ),
+                                }
+                            )
+                            f.flush()
+
+                        # Progress checkpoint every 50 messages (Fix 3: short session)
+                        if messages_checked % 50 == 0:
+                            if days:
+                                pct = min(
+                                    90, (messages_checked / 1000) * 100
+                                )
+                            else:
+                                total_expected = max(
+                                    1, limit * max(1, len(group_usernames))
+                                )
+                                pct = min(
+                                    99, (processed_messages / total_expected) * 100
+                                )
+                            with get_short_session() as db:
+                                job = db.query(Job).filter(
+                                    Job.id == job_id
+                                ).first()
+                                if job:
+                                    job.progress = pct
+
+                    logger.info(
+                        f"Group monitor job {job_id}: finished '{group_username}' — "
+                        f"checked {messages_checked}, matched {matched_count}"
+                    )
+
+        # Write any accumulated error messages
+        if error_messages:
+            with get_short_session() as db:
+                job = db.query(Job).filter(Job.id == job_id).first()
+                if job:
+                    job.error_message = (
+                        f"Completed with some errors: {', '.join(error_messages)}"
+                    )
 
     except FloodWaitError as e:
-        logger.warning(f"Flood wait error for job {job.id}: {e}. Retrying in {e.seconds} seconds.")
-        self.retry(countdown=e.seconds)
+        logger.warning(f"FloodWaitError in group_monitor_task: waiting {e.seconds}s")
+        await asyncio.sleep(e.seconds)
+        raise # Re-raise to trigger Celery retry
+
+
+    finally:
+        # Fix 1: disconnect inside the async scope
+        await session_manager.disconnect_client(account_snap.id)
+
+
+@celery_app.task(
+    base=HumanAwareTask,
+    bind=True,
+    max_retries=3,
+    autoretry_for=(ConnectionError, TimeoutError, OSError),
+    retry_backoff=True,
+    retry_jitter=True,
+)
+def group_monitor_task(self, job_id: int):
+    """Celery task for monitoring Telegram group messages."""
+    account_id = None
+
+    # ── Gap 9: idempotency guard ──────────────────────────────────────────────
+    with get_short_session() as db:
+        job = db.query(Job).filter(Job.id == job_id).first()
+        if not job:
+            logger.error(f"group_monitor_task: job {job_id} not found")
+            return
+        if job.status not in ("queued", "pending"):
+            logger.warning(
+                f"group_monitor_task: job {job_id} has status '{job.status}', "
+                f"skipping"
+            )
+            return
+        account_id = job.telegram_account_id
+        config = json.loads(job.config) if job.config else {}
+        job.status = "running"
+        job.started_at = datetime.utcnow()
+    # session closed
+
+    # ── Fix A: per-account lock ───────────────────────────────────────────────
+    if not acquire_account_lock(account_id, job_id):
+        holder = get_lock_holder(account_id)
+        logger.warning(
+            f"group_monitor_task: account {account_id} locked by {holder}. "
+            f"Job {job_id} will retry."
+        )
+        raise self.retry(countdown=90, max_retries=2)
+
+    try:
+        # ── Fix E: snapshot account ───────────────────────────────────────────
+        with get_short_session() as db:
+            account = (
+                db.query(TelegramAccount)
+                .options(joinedload(TelegramAccount.proxy))
+                .filter(TelegramAccount.id == account_id)
+                .first()
+            )
+            if not account:
+                raise RuntimeError(f"Account {account_id} not found")
+            account_snap = snapshot_account(account)
+
+        # ── Run the async monitor ─────────────────────────────────────────────
+        asyncio.run(_group_monitor_runner(job_id, account_snap, config))
+
+        # ── Mark complete ─────────────────────────────────────────────────────
+        with get_short_session() as db:
+            job = db.query(Job).filter(Job.id == job_id).first()
+            if job:
+                job.status = "completed"
+                job.progress = 100
+                job.completed_at = datetime.utcnow()
+
+        logger.info(f"group_monitor_task: job {job_id} completed")
+
     except Exception as e:
-        logger.error(f"Error executing group monitor job {job.id}: {e}")
-        job.status = 'failed'
-        job.error_message = str(e)
-        db.commit()
+        logger.error(f"group_monitor_task: job {job_id} failed: {e}")
+        with get_short_session() as db:
+            job = db.query(Job).filter(Job.id == job_id).first()
+            if job:
+                # Do not mark failed if it's a retryable error
+                retryable = (ConnectionError, TimeoutError, OSError)
+                if not isinstance(e, retryable):
+                    job.status = "failed"
+                    job.error_message = str(e)
+        raise e
+
     finally:
         if account_id:
-            asyncio.run(session_manager.disconnect_client(account_id))
-        db.close()
+            release_account_lock(account_id)

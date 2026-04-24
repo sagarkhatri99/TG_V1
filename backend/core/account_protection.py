@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from models import TelegramAccount, AccountHealth
 from database import SessionLocal
 import enum
+import sqlite3
 
 logger = logging.getLogger(__name__)
 
@@ -266,23 +267,34 @@ class TelegramRateLimiter:
         }
 
 
-def sync_health_to_db(account_id: int, db: Session, extra_stats: dict = None) -> None:
+def sync_health_to_db(
+    account_id: int,
+    db: Session = None,
+    extra_stats: dict = None,
+) -> None:
     """
     Persist the in-memory rate limiter stats to the AccountHealth database table.
-    This is the fix for health_score always staying at 100.0.
 
     Call this:
     - After each flood incident (handle_flood_incident)
     - At job completion / failure
     - After a batch of messages is sent
 
-    :param account_id: TelegramAccount.id
-    :param db: SQLAlchemy session
+    :param account_id:  TelegramAccount.id
+    :param db:          SQLAlchemy session (optional). When None, this function
+                        opens, commits, and closes its own session. When a session
+                        is provided (legacy callers), it is used as-is and NOT
+                        closed by this function.
     :param extra_stats: Optional dict with keys:
         - messages_sent_today (int)
         - groups_joined_today (int)
         - api_calls_today (int)
     """
+    _owns_session = False
+    if db is None:
+        db = SessionLocal()
+        _owns_session = True
+
     try:
         if account_id not in rate_limiter.account_stats:
             return  # No stats to sync yet
@@ -296,8 +308,10 @@ def sync_health_to_db(account_id: int, db: Session, extra_stats: dict = None) ->
 
         # Derive error counts from incidents
         flood_wait_count = stats.get("consecutive_floods", 0)
-        spam_error_count = sum(1 for i in stats.get("flood_incidents", []) if i.get("severity") in ("high", "critical"))
-        generic_error_count = 0
+        spam_error_count = sum(
+            1 for i in stats.get("flood_incidents", [])
+            if i.get("severity") in ("high", "critical")
+        )
 
         # Status mapping
         health_status_map = {
@@ -338,25 +352,33 @@ def sync_health_to_db(account_id: int, db: Session, extra_stats: dict = None) ->
         if stats.get("flood_incidents"):
             latest_incident = stats["flood_incidents"][-1]
             entry = {
-                "time": latest_incident["timestamp"].isoformat() if isinstance(latest_incident["timestamp"], datetime) else str(latest_incident["timestamp"]),
+                "time": (
+                    latest_incident["timestamp"].isoformat()
+                    if isinstance(latest_incident["timestamp"], datetime)
+                    else str(latest_incident["timestamp"])
+                ),
                 "type": "flood_wait",
                 "severity": latest_incident.get("severity", "unknown"),
                 "wait_seconds": latest_incident.get("wait_seconds", 0),
                 "job_id": latest_incident.get("job_id"),
             }
             history = health.error_history or []
-            # Keep last 50 entries
-            history = history[-49:] + [entry]
+            history = history[-49:] + [entry]  # keep last 50 entries
             health.error_history = history
 
         db.commit()
-        logger.debug(f"sync_health_to_db: account {account_id} → score={score:.1f}, status={new_status}")
+        logger.debug(
+            f"sync_health_to_db: account {account_id} → score={score:.1f}, status={new_status}"
+        )
     except Exception as e:
         logger.error(f"sync_health_to_db failed for account {account_id}: {e}")
         try:
             db.rollback()
         except Exception:
             pass
+    finally:
+        if _owns_session:
+            db.close()
 
 
 # Global instance

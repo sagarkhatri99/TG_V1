@@ -13,6 +13,7 @@ import io
 from datetime import datetime, timedelta
 
 # Task dispatchers are imported lazily inside the restart endpoint to avoid heavy imports at startup
+from core.task_registry import TASK_MAP, get_queue_for_job
 
 router = APIRouter()
 
@@ -156,10 +157,26 @@ async def resume_job(
     if job.status != 'paused':
         raise HTTPException(status_code=400, detail="Job is not paused")
     
-    job.status = 'pending'
-    db.commit()
-    
-    return {"status": "resumed"}
+    # Re-dispatch based on job type
+    from importlib import import_module
+    try:
+        if job.job_type in TASK_MAP:
+            module_name, func_name = TASK_MAP[job.job_type]
+            module = import_module(module_name)
+            task_func = getattr(module, func_name)
+            
+            queue = get_queue_for_job(job.job_type, job.telegram_account_id)
+            res = task_func.apply_async(args=[job.id], queue=queue)
+            
+            job.status = 'queued'
+            job.celery_task_id = res.id
+            db.commit()
+            
+            return {"status": "resumed", "job_id": job.id, "celery_task_id": res.id}
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown job type: {job.job_type}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to resume job: {str(e)}")
 
 @router.post("/{job_id}/restart")
 async def restart_job(
@@ -204,7 +221,15 @@ async def restart_job(
             module_name, func_name = task_map[new_job.job_type]
             module = import_module(module_name)
             task_func = getattr(module, func_name)
-            task_func.delay(new_job.id)
+            
+            queue = get_queue_for_job(new_job.job_type, new_job.telegram_account_id)
+            celery_result = task_func.apply_async(args=[new_job.id], queue=queue)
+            
+            # Single commit: status and task_id together (Gap 4)
+            new_job.status = "queued"
+            new_job.celery_task_id = celery_result.id
+            db.commit()
+            
             dispatched = True
     except Exception as e:
         # If dispatch fails, mark job failed

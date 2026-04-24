@@ -14,6 +14,7 @@ import shutil
 from typing import Optional
 from datetime import datetime
 from .tasks import group_join_task
+from core.task_registry import get_queue_for_job
 
 router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
@@ -157,7 +158,13 @@ async def create_group_join_job(
     db.commit()
     db.refresh(new_job)
 
-    group_join_task.delay(new_job.id)
+    queue = get_queue_for_job("group_join", account_id)
+    celery_result = group_join_task.apply_async(args=[new_job.id], queue=queue)
+
+    # Single commit: status and task_id together (Gap 4)
+    new_job.status = "queued"
+    new_job.celery_task_id = celery_result.id
+    db.commit()
 
     return {
         "job_id": new_job.id,

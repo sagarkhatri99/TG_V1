@@ -3,14 +3,18 @@ Structured JSON logging setup for FastAPI application.
 Provides correlation IDs and request tracing across all modules.
 """
 
+from __future__ import annotations
 import logging
 import json
 import sys
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from fastapi import Request
+
 from pythonjsonlogger import jsonlogger
-from fastapi import Request
 from contextvars import ContextVar
 
 # Context variable for storing correlation ID per request

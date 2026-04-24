@@ -9,8 +9,8 @@ ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
 # Install runtime dependencies (no build-essential overhead)
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
+RUN apt-get update --fix-missing \
+    && apt-get install -y --no-install-recommends --fix-missing \
        libpq5 \
        curl \
        sed \

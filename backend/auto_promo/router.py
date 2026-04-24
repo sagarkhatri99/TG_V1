@@ -9,6 +9,7 @@ from typing import Optional
 import os
 import shutil
 from .tasks import auto_promo_task
+from core.task_registry import get_queue_for_job
 from datetime import datetime, timedelta
 
 router = APIRouter()
@@ -125,7 +126,13 @@ async def create_auto_promo_job(
 
     # Only dispatch immediately if not scheduled for later
     if not is_scheduled:
-        auto_promo_task.delay(new_job.id)
+        queue = get_queue_for_job("auto_promo", account_id)
+        celery_result = auto_promo_task.apply_async(args=[new_job.id], queue=queue)
+        
+        # Single commit: status and task_id together (Gap 4)
+        new_job.status = "queued"
+        new_job.celery_task_id = celery_result.id
+        db.commit()
 
     if current_user.subscription_plan == 'pro':
         current_user.jobs_created_this_month += 1
