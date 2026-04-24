@@ -16,8 +16,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  IconButton,
-  Tooltip,
+  Button,
 } from '@mui/material';
 import {
   CheckCircle as HealthyIcon,
@@ -161,7 +160,7 @@ export default function HealthDashboard() {
                 Healthy Accounts
               </Typography>
               <Typography variant="h4" color="success.main">
-                {healthData.filter(a => a.health_score >= 80).length}
+                {healthData.filter((a: AccountHealth) => a.health_score >= 80).length}
               </Typography>
             </CardContent>
           </Card>
@@ -173,7 +172,7 @@ export default function HealthDashboard() {
                 Warning Status
               </Typography>
               <Typography variant="h4" color="warning.main">
-                {healthData.filter(a => a.health_score >= 50 && a.health_score < 80).length}
+                {healthData.filter((a: AccountHealth) => a.health_score >= 50 && a.health_score < 80).length}
               </Typography>
             </CardContent>
           </Card>
@@ -185,7 +184,7 @@ export default function HealthDashboard() {
                 Critical Status
               </Typography>
               <Typography variant="h4" color="error.main">
-                {healthData.filter(a => a.health_score < 50).length}
+                {healthData.filter((a: AccountHealth) => a.health_score < 50).length}
               </Typography>
             </CardContent>
           </Card>
@@ -213,7 +212,7 @@ export default function HealthDashboard() {
                 </TableCell>
               </TableRow>
             ) : (
-              healthData.map((account) => (
+              healthData.map((account: AccountHealth) => (
                 <TableRow key={account.id}>
                   <TableCell>
                     <Box>
