@@ -11,9 +11,6 @@ import uuid
 from datetime import datetime
 from typing import Optional, TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from fastapi import Request
-
 from pythonjsonlogger import jsonlogger
 from contextvars import ContextVar
 
@@ -114,7 +111,7 @@ def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(name)
 
 
-async def set_correlation_id(request: Request) -> Optional[str]:
+async def set_correlation_id(request) -> Optional[str]:
     """
     Extract or generate correlation ID from request and store in context.
     
@@ -124,6 +121,8 @@ async def set_correlation_id(request: Request) -> Optional[str]:
     Returns:
         Correlation ID string
     """
+    from fastapi import Request
+    
     # Try to get from headers (X-Correlation-ID or X-Request-ID)
     correlation_id = (
         request.headers.get('X-Correlation-ID') or

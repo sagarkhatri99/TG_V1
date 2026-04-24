@@ -11,8 +11,7 @@ To add a new job type:
   1. Add an entry to TASK_MAP below.
   2. Classify it in TELETHON_JOB_TYPES or BOT_JOB_TYPES.
   3. Add it to celery_app.py task_routes.
-  4. If it is a Telethon job type, restart worker-long with the updated
-     CELERY_ACCOUNT_QUEUES env var (or wait for sync_worker_queues beat task).
+  4. All jobs are now routed to long_tasks with Redis locking.
 """
 
 from __future__ import annotations
@@ -62,16 +61,7 @@ def get_queue_for_job(job_type: str, account_id: Optional[int]) -> str:
     """
     Return the Celery queue name for a given job dispatch.
 
-    Telethon jobs are routed to a per-account queue so they execute
-    serially for each account. Bot jobs use the shared long_tasks queue.
-
-    Args:
-        job_type:   The job_type string (e.g. 'auto_promo').
-        account_id: The telegram_account_id of the job, or None.
-
-    Returns:
-        Queue name string, e.g. 'account_5' or 'long_tasks'.
+    All jobs are now routed to the shared long_tasks queue.
+    Serial execution per account is enforced via Redis locking in the tasks.
     """
-    if job_type in TELETHON_JOB_TYPES and account_id:
-        return f"account_{account_id}"
     return "long_tasks"

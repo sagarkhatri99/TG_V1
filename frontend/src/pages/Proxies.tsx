@@ -28,6 +28,7 @@ import {
   Delete as DeleteIcon,
   Science as TestIcon,
   Edit as EditIcon,
+  Refresh as RefreshIcon,
 } from '@mui/icons-material';
 import api from '../api/Index';
 import type { Proxy } from '../Types/Index';
@@ -150,9 +151,17 @@ export default function Proxies() {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>
-        Proxy Management
-      </Typography>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+        <Typography variant="h4">Proxy Management</Typography>
+        <Button
+          variant="outlined"
+          startIcon={loading ? <CircularProgress size={20} /> : <RefreshIcon />}
+          onClick={fetchProxies}
+          disabled={loading}
+        >
+          Refresh
+        </Button>
+      </Box>
       <Typography variant="body1" color="text.secondary" gutterBottom>
         Add, test, rename, and manage your SOCKS5 proxies. All proxies are enforced as SOCKS5.
       </Typography>

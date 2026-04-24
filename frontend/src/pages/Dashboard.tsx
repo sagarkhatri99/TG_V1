@@ -11,6 +11,7 @@ import {
   ListItemIcon,
   Chip,
   CircularProgress,
+  Button,
 } from '@mui/material';
 
 import {
@@ -21,6 +22,7 @@ import {
   CheckCircle,
   Warning,
   Error,
+  Refresh as RefreshIcon,
 } from '@mui/icons-material';
 import api, { endpoints } from '../api/Index';
 import type { SystemStats, TelegramAccount } from '../Types/Index';
@@ -56,6 +58,24 @@ export default function Dashboard() {
     fetchData();
   }, []);
 
+  const refreshData = async () => {
+    setLoading(true);
+    try {
+      const [statsResponse, accountsResponse, meStatsResponse] = await Promise.all([
+        api.get(endpoints.stats),
+        api.get(endpoints.accounts.list),
+        api.get(endpoints.me.stats),
+      ]);
+      setStats(statsResponse.data);
+      setAccounts(accountsResponse.data.accounts || []);
+      setMeStats(meStatsResponse.data);
+    } catch (error) {
+      console.error('Failed to fetch dashboard data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -88,12 +108,22 @@ export default function Dashboard() {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>
-        Dashboard
-      </Typography>
-      <Typography variant="body1" color="text.secondary" gutterBottom>
-        Welcome to TG Tools. Monitor your Telegram automation activities.
-      </Typography>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+        <Box>
+          <Typography variant="h4">Dashboard</Typography>
+          <Typography variant="body1" color="text.secondary">
+            Welcome to TG Tools. Monitor your Telegram automation activities.
+          </Typography>
+        </Box>
+        <Button
+          variant="outlined"
+          startIcon={loading ? <CircularProgress size={20} /> : <RefreshIcon />}
+          onClick={refreshData}
+          disabled={loading}
+        >
+          Refresh
+        </Button>
+      </Box>
 
 
       <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, flexWrap: 'wrap', gap: 3, mb: 4 }}>

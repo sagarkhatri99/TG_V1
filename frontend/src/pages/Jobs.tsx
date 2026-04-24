@@ -59,8 +59,6 @@ export default function Jobs() {
 
   useEffect(() => {
     fetchJobs();
-    const interval = setInterval(fetchJobs, 5000); // Poll every 5 seconds
-    return () => clearInterval(interval);
   }, []);
 
   const handlePause = async (jobId: number) => {
@@ -237,9 +235,14 @@ export default function Jobs() {
               >
                 Download CSV
               </Button>
-              <IconButton onClick={() => { setLoading(true); fetchJobs(); }} disabled={loading}>
-                <Refresh />
-              </IconButton>
+              <Button
+                variant="outlined"
+                startIcon={loading ? <CircularProgress size={20} /> : <Refresh />}
+                onClick={() => { setLoading(true); fetchJobs(); }}
+                disabled={loading}
+              >
+                Refresh
+              </Button>
             </Box>
           </Box>
           {loading && jobs.length === 0 ? (

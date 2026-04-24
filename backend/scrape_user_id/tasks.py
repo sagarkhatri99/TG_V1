@@ -16,9 +16,9 @@ import logging
 import os
 import sqlite3
 from datetime import datetime
+from redis import Redis
 
 from celery_app import celery_app
-from core.account_lock import acquire_account_lock, release_account_lock, get_lock_holder
 from core.db_utils import get_short_session, snapshot_account
 from core.human_aware_task import HumanAwareTask
 from core.session_manager import session_manager
@@ -135,14 +135,15 @@ def scrape_users_task(self, job_id: int):
         job.started_at = datetime.utcnow()
     # session closed
 
-    # ── Fix A: acquire per-account lock ─────────────────────────────────────
-    if not acquire_account_lock(account_id, job_id):
-        holder = get_lock_holder(account_id)
+    # ── Redis Lock ──────────────────────────────────────────────────────────
+    redis_client = Redis.from_url(os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0"), decode_responses=True)
+    lock = redis_client.lock(f"lock:account:{account_id}", timeout=3600, blocking_timeout=0)
+
+    if not lock.acquire(blocking=False):
         logger.warning(
-            f"scrape_users_task: account {account_id} locked by {holder}. "
-            f"Job {job_id} will retry."
+            f"scrape_users_task: account {account_id} is locked. Job {job_id} will retry."
         )
-        raise self.retry(countdown=90, max_retries=2)
+        raise self.retry(countdown=30, max_retries=20)
 
     try:
         # ── Load + snapshot account (Fix E) ──────────────────────────────────
@@ -190,6 +191,4 @@ def scrape_users_task(self, job_id: int):
         raise
 
     finally:
-        # Fix A: always release lock
-        if account_id:
-            release_account_lock(account_id)
+        lock.release()

@@ -18,8 +18,9 @@ import {
   FormControl,
   InputLabel,
   Alert,
+  CircularProgress,
 } from '@mui/material';
-import { Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import { Add as AddIcon, Delete as DeleteIcon, Refresh as RefreshIcon } from '@mui/icons-material';
 import api from '../api/Index';
 import type { Template, TemplateCreate } from '../Types/Index';
 import toast from 'react-hot-toast';
@@ -127,13 +128,23 @@ export default function Templates() {
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4">Message Templates</Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => setDialogOpen(true)}
-        >
-          Create Template
-        </Button>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button
+            variant="outlined"
+            startIcon={loading ? <CircularProgress size={20} /> : <RefreshIcon />}
+            onClick={fetchTemplates}
+            disabled={loading}
+          >
+            Refresh
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setDialogOpen(true)}
+          >
+            Create Template
+          </Button>
+        </Box>
       </Box>
 
       {error && (

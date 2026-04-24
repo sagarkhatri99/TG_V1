@@ -58,9 +58,6 @@ export default function HealthDashboard() {
 
   useEffect(() => {
     fetchHealthData();
-    // Auto-refresh every 30 seconds
-    const interval = setInterval(() => fetchHealthData(true), 30000);
-    return () => clearInterval(interval);
   }, []);
 
   const fetchHealthData = useCallback(async (silent = false) => {
@@ -125,15 +122,18 @@ export default function HealthDashboard() {
               Updated {lastUpdated.toLocaleTimeString()}
             </Typography>
           )}
-          <Tooltip title="Refresh now">
-            <IconButton onClick={() => fetchHealthData(true)} disabled={refreshing || loading}>
-              {refreshing ? <CircularProgress size={20} /> : <RefreshIcon />}
-            </IconButton>
-          </Tooltip>
+          <Button
+            variant="outlined"
+            startIcon={refreshing || loading ? <CircularProgress size={20} /> : <RefreshIcon />}
+            onClick={() => fetchHealthData(false)}
+            disabled={refreshing || loading}
+          >
+            Refresh
+          </Button>
         </Box>
       </Box>
       <Typography variant="body2" color="text.secondary" gutterBottom sx={{ mb: 3 }}>
-        Monitor account health scores, API usage, and error rates. Auto-refreshes every 30s.
+        Monitor account health scores, API usage, and error rates.
       </Typography>
 
       {alert && (

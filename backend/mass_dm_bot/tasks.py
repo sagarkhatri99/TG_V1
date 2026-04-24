@@ -5,7 +5,7 @@ Refactored for stability:
 - Fix 1: Single asyncio.run() caller.
 - Fix 3: Short-lived DB sessions (get_short_session).
 - Gap 9: Idempotency guard at task start.
-Note: Bot tasks do not require Redis account locking or AccountSnapshots.
+- Redis Locking: lock:bot:{md5(bot_token)} (serial execution per bot)
 """
 
 import asyncio
@@ -13,10 +13,11 @@ import json
 import logging
 import os
 import random
-import sqlite3
+import hashlib
 from datetime import datetime, timedelta
 
 import pandas as pd
+from redis import Redis
 from celery.exceptions import SoftTimeLimitExceeded
 from celery_app import celery_app
 from core.db_utils import get_short_session
@@ -179,15 +180,20 @@ def mass_dm_bot_task(self, job_id: int):
         job.started_at = datetime.utcnow()
     # session closed
 
-    try:
-        # ── Fix 1: Single asyncio.run() ───────────────────────────────────────
-        asyncio.run(_mass_dm_bot_runner(job_id, config))
+    # ── Redis Lock ──────────────────────────────────────────────────────────
+    redis_client = Redis.from_url(os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0"), decode_responses=True)
+    
+    bot_token = config.get("bot_token", "default")
+    bot_hash = hashlib.md5(bot_token.encode()).hexdigest()
+    lock = redis_client.lock(f"lock:bot:{bot_hash}", timeout=3600, blocking_timeout=0)
 
-        with get_short_session() as db:
-            job = db.query(Job).filter(Job.id == job_id).first()
-            if job and job.status == "running":
-                job.status = "completed"
-                job.completed_at = datetime.utcnow()
+    if not lock.acquire(blocking=False):
+        logger.warning(f"mass_dm_bot_task: bot {bot_hash[:8]}... is locked. Job {job_id} will retry.")
+        raise self.retry(countdown=30, max_retries=20)
+
+    try:
+        # ── Run async runner ──────────────────────────────────────────────────
+        asyncio.run(_mass_dm_bot_runner(job_id, config))
 
     except SoftTimeLimitExceeded:
         logger.warning(f"Mass DM Bot job {job_id} hit soft time limit — pausing")
@@ -219,3 +225,5 @@ def mass_dm_bot_task(self, job_id: int):
                 job.status = "failed"
                 job.error_message = str(e)
         raise e
+    finally:
+        lock.release()

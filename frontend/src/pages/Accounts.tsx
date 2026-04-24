@@ -35,6 +35,7 @@ import {
   Delete as DeleteIcon,
   Edit as EditIcon,
   Settings as CampaignIcon,
+  Refresh as RefreshIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import api, { endpoints } from '../api/Index';
@@ -340,6 +341,14 @@ export default function Accounts() {
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4">Accounts Management</Typography>
         <Box display="flex" gap={2}>
+          <Button
+            variant="outlined"
+            startIcon={loading ? <CircularProgress size={20} /> : <RefreshIcon />}
+            onClick={() => { setLoading(true); fetchAccounts(); fetchProxies(); }}
+            disabled={loading}
+          >
+            Refresh
+          </Button>
           <Button
             variant="outlined"
             onClick={() => setImportDialogOpen(true)}
