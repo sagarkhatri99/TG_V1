@@ -259,4 +259,4 @@ def auto_promo_task(self, job_id: int):
                 job = db.query(Job).filter(Job.id == job_id).first()
                 sent = job.messages_sent if job else 0
             sync_health_to_db(account_id, extra_stats={"messages_sent_today": sent})
-                    lock.release()
+        lock.release()
