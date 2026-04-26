@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Dict, List
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +13,23 @@ class BanPreventionSystem:
             'high': 0.8,
             'critical': 0.95
         }
+        # In-memory risk cache: {account_id: (score, timestamp)}
+        self._risk_cache: Dict[int, tuple[float, float]] = {}
+        self._cache_ttl = 60  # seconds
     
+    async def get_cached_risk(self, account, db) -> float:
+        """Get risk score from cache or trigger fresh assessment if expired."""
+        now = time.time()
+        if account.id in self._risk_cache:
+            score, ts = self._risk_cache[account.id]
+            if now - ts < self._cache_ttl:
+                return score
+        
+        # Cache miss or expired
+        score = await self.assess_account_risk(account, db)
+        self._risk_cache[account.id] = (score, now)
+        return score
+
     async def assess_account_risk(self, account, db) -> float:
         """Calculate comprehensive risk score for account"""
         

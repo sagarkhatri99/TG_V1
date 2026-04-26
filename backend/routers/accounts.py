@@ -185,8 +185,9 @@ async def list_accounts(db: Session = Depends(get_db), current_user: User = Depe
     account_data = []
     for account in accounts:
         try:
-            risk_score = await ban_prevention.assess_account_risk(account, db)
-        except:
+            risk_score = await ban_prevention.get_cached_risk(account, db)
+        except Exception as e:
+            logger.error(f"Error getting risk score for account {account.id}: {e}")
             risk_score = 0.0
         account_data.append({
             "id": account.id,

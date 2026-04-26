@@ -57,6 +57,10 @@ async def add_correlation_id(request: Request, call_next):
 
 @app.middleware("http")
 async def api_logging_middleware(request: Request, call_next):
+    # Skip logging for health checks and internal metrics
+    if request.url.path in ("/health", "/metrics", "/favicon.ico") or request.url.path.startswith("/api/health"):
+        return await call_next(request)
+        
     start = time.time()
     try:
         response = await call_next(request)
@@ -244,4 +248,4 @@ app.include_router(group_joiner_router, prefix="/api/group-joiner", tags=["Group
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port="8000")
+    uvicorn.run(app, host="0.0.0.0", port=8000)

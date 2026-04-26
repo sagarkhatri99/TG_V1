@@ -1,4 +1,5 @@
 import logging
+import os
 from sqlalchemy import create_engine, event
 from sqlalchemy.pool import QueuePool
 from sqlalchemy.ext.declarative import declarative_base
@@ -18,6 +19,7 @@ _POOL_RECYCLE = 1800  # 30 min — prevents stale connection errors
 
 engine = create_engine(
     settings.DATABASE_URL,
+    echo=os.getenv("SQLALCHEMY_ECHO", "false").lower() == "true",
     poolclass=QueuePool,
     pool_size=_POOL_SIZE,
     max_overflow=_MAX_OVERFLOW,
@@ -71,5 +73,9 @@ def get_db():
     db = SessionLocal()
     try:
         yield db
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()

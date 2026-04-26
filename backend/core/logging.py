@@ -8,6 +8,7 @@ import logging
 import json
 import sys
 import uuid
+import os
 from datetime import datetime
 from typing import Optional, TYPE_CHECKING
 
@@ -54,6 +55,8 @@ class JSONFormatter(jsonlogger.JsonFormatter):
             log_record['thread_id'] = record.thread
 
 
+_LOGGING_CONFIGURED = False
+
 def setup_json_logging(
     environment: str = "development",
     log_level: str = "INFO"
@@ -65,15 +68,20 @@ def setup_json_logging(
         environment: "production" or "development"
         log_level: logging level (INFO, DEBUG, WARNING, ERROR)
     """
+    global _LOGGING_CONFIGURED
+    if _LOGGING_CONFIGURED:
+        return
+    
     # Get root logger
     root_logger = logging.getLogger()
     root_logger.setLevel(getattr(logging, log_level))
     
-    # Remove existing handlers
+    # Remove existing handlers to prevent duplication
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
     
-    # Create console handler with JSON formatting
+    # In production, we only want JSON console logging.
+    # In development, we can stick to JSON or plain console.
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(getattr(logging, log_level))
     
@@ -96,6 +104,8 @@ def setup_json_logging(
     # In development, enable SQL query logging at DEBUG level
     if environment == "development":
         logging.getLogger("sqlalchemy.engine").setLevel(logging.DEBUG)
+    
+    _LOGGING_CONFIGURED = True
 
 
 def get_logger(name: str) -> logging.Logger:
@@ -165,12 +175,17 @@ def get_file_logger(name: str, log_file: str, level=logging.DEBUG) -> logging.Lo
     )
     fh.setFormatter(formatter)
     fh.setLevel(level)
-    ch = logging.StreamHandler()
-    ch.setFormatter(formatter)
-    ch.setLevel(logging.INFO)
-    logger.setLevel(level)
     logger.addHandler(fh)
-    logger.addHandler(ch)
+    
+    # Only add console output if we are NOT in production,
+    # as setup_json_logging already handles console for the root logger.
+    if os.getenv("ENVIRONMENT", "development") != "production":
+        ch = logging.StreamHandler()
+        ch.setFormatter(formatter)
+        ch.setLevel(logging.INFO)
+        logger.addHandler(ch)
+        
+    logger.setLevel(level)
     return logger
 
 api_logger    = get_file_logger("api",    "api.log")

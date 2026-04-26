@@ -91,8 +91,12 @@ celery_app.conf.update(
 def on_worker_init(sender=None, **kwargs):
     """Log the DATABASE_URL and verify DB connectivity before accepting tasks."""
     from core.config import settings, mask_db_url
+    from core.logging import setup_json_logging
     from database import engine
     from sqlalchemy import text
+
+    # Initialize JSON logging for the worker
+    setup_json_logging(environment=settings.ENVIRONMENT, log_level="INFO")
 
     masked = mask_db_url(settings.DATABASE_URL)
     logger.info(

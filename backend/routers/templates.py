@@ -36,23 +36,34 @@ class TemplateResponse(BaseModel):
     class Config:
         from_attributes = True
 
+_TEMPLATES_TABLE_VERIFIED = False
+
 @router.get("", response_model=List[TemplateResponse])
 async def list_templates(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """List all templates for current user"""
+    global _TEMPLATES_TABLE_VERIFIED
+    
     logger.info(f"[TEMPLATES] GET /api/templates - user_id={current_user.id} email={current_user.email}")
     try:
-        # Verify table exists
-        result = db.execute(text("SELECT COUNT(*) FROM information_schema.tables WHERE table_name='message_templates'")).scalar()
-        logger.info(f"[TEMPLATES] message_templates table exists: {result > 0}")
+        # Verify table exists only once per process startup
+        if not _TEMPLATES_TABLE_VERIFIED:
+            result = db.execute(text("SELECT COUNT(*) FROM information_schema.tables WHERE table_name='message_templates'")).scalar()
+            if result == 0:
+                logger.error("[TEMPLATES] message_templates table MISSING")
+                raise HTTPException(status_code=500, detail="Database table missing")
+            _TEMPLATES_TABLE_VERIFIED = True
+            logger.info("[TEMPLATES] message_templates table verified")
 
         templates = db.query(MessageTemplate).filter(
             MessageTemplate.user_id == current_user.id
         ).order_by(MessageTemplate.created_at.desc()).all()
         logger.info(f"[TEMPLATES] Found {len(templates)} templates for user_id={current_user.id}")
         return templates
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"[TEMPLATES] ERROR listing templates: {e}")
         logger.error(traceback.format_exc())
