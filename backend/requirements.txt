@@ -13,7 +13,7 @@ python-dotenv==1.0.0
 cryptography==41.0.7
 aiofiles==23.2.1
 passlib>=1.7.4
-bcrypt==4.1.2
+bcrypt==4.0.1
 alembic==1.13.1
 pytest==8.3.2
 pytest-asyncio==0.23.8

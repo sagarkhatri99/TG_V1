@@ -10,13 +10,16 @@ Refactored for production stability and serialization:
 - Gap 9: Idempotency guard at task start.
 - core.account_protection.sync_health_to_db is now self-sufficient (Fix 3/Stage 2).
 """
-
+import random
 import asyncio
 import json
 import logging
 import os
 import sqlite3
 from datetime import datetime, timedelta
+from celery.exceptions import SoftTimeLimitExceeded
+from core.dm_health_policy import get_tier_policy, get_recipient_mode_policy
+from models import Job, TelegramAccount, MessageLog
 
 import pandas as pd
 from redis import Redis
@@ -112,6 +115,9 @@ async def _send_message_with_retry(
     sleep_time = random.randint(min_delay, max_delay)
     await asyncio.sleep(sleep_time)
 
+    final_status = "failed"
+    error_msg = ""
+
     try:
         if image_file_path:
             await client.send_file(uid_normalized, image_file_path, caption=message)
@@ -119,6 +125,7 @@ async def _send_message_with_retry(
             await client.send_message(uid_normalized, message)
 
         result_dict["sent"] += 1
+        final_status = "sent"
         return uid, True, ""
 
     except FloodWaitError as e:
@@ -132,8 +139,8 @@ async def _send_message_with_retry(
         if not should_continue:
             result_dict["should_stop"] = True
             result_dict["stop_reason"] = f"Protection triggered: {action}"
-            # sync_health_to_db now opens its own session if db=None
             sync_health_to_db(account_id, extra_stats={"messages_sent_today": result_dict["sent"]})
+            # Flood stop doesn't count as a final outcome for THIS target yet, we'll retry later
             return uid, False, f"Flood stop: {action}"
 
         # Continue with backoff
@@ -147,15 +154,43 @@ async def _send_message_with_retry(
             else:
                 await client.send_message(uid_normalized, message)
             result_dict["sent"] += 1
+            final_status = "sent"
             return uid, True, ""
         except Exception as retry_e:
+            final_status = "error"
+            error_msg = str(retry_e)
             return uid, False, f"Retry failed: {type(retry_e).__name__}"
 
     except (UserPrivacyRestrictedError, UserIsBotError, UserBlockedError, ChatWriteForbiddenError) as e:
-        return uid, False, type(e).__name__
+        final_status = "failed"
+        error_msg = type(e).__name__
+        return uid, False, error_msg
     except Exception as e:
         logger.error(f"Job {job_id}: Unexpected error for {uid}: {e}")
+        final_status = "error"
+        error_msg = str(e)
         return uid, False, type(e).__name__
+    finally:
+        # Write final outcome to MessageLog
+        if final_status in ("sent", "failed", "error"):
+            try:
+                with get_short_session() as db:
+                    # Check if already exists (UniqueConstraint safeguard)
+                    existing = db.query(MessageLog).filter_by(job_id=job_id, target_user_id=uid).first()
+                    if not existing:
+                        log = MessageLog(
+                            telegram_account_id=account_id,
+                            job_id=job_id,
+                            target_user_id=uid,
+                            target_username=uid if not uid.isdigit() else None,
+                            message_content=message[:200],
+                            delivery_status=final_status,
+                            ai_relevance_score=0.0
+                        )
+                        db.add(log)
+                        db.commit()
+            except Exception as log_e:
+                logger.error(f"Failed to write MessageLog: {log_e}")
 
 
 async def _mass_dm_runner(job_id: int, account_snap, config: dict):
@@ -205,16 +240,24 @@ async def _mass_dm_runner(job_id: int, account_snap, config: dict):
                 job.completion_percentage = 100.0
         return
 
-    # 2. Protection Init
+    # 2. Protection & Policy Init
+    with get_short_session() as db:
+        acc = db.query(TelegramAccount).filter(TelegramAccount.id == account_id).first()
+        tier = getattr(acc, 'account_trust_tier', 'warming') or 'warming'
+        mode = config.get("recipient_mode", "cold")
+        
+        tier_policy = get_tier_policy(tier)
+        mode_policy = get_recipient_mode_policy(mode)
+        
+        # Adjust delays based on tier and recipient mode
+        active_min = int(max(min_delay or 0, tier_policy.min_delay) * mode_policy.delay_multiplier)
+        active_max = int(max(max_delay or 0, tier_policy.max_delay) * mode_policy.delay_multiplier)
+        delay_config = {"min": active_min, "max": active_max}
+
     rate_limiter.update_account_stats(account_id)
     health = rate_limiter.get_account_health(account_id)
     if health["health_status"] in ("suspended", "restricted"):
         raise RuntimeError(f"Account {account_id} is {health['health_status']}")
-
-    # Adjust delays based on health history
-    active_min = max(min_delay or 30, health["current_min_delay"])
-    active_max = max(max_delay or 120, health["current_max_delay"])
-    delay_config = {"min": active_min, "max": active_max}
 
     client = await session_manager.get_client(account_snap)
 
@@ -228,20 +271,23 @@ async def _mass_dm_runner(job_id: int, account_snap, config: dict):
 
     try:
         async with client:
-            for i, uid in enumerate(ids_to_process):
-                # Protection checks
+            i = 0
+            while i < len(ids_to_process):
+                uid = ids_to_process[i]
+
+                # Protection checks (SQL-based)
                 if result_dict["should_stop"]:
                     logger.error(f"Job {job_id}: Auto-stop: {result_dict['stop_reason']}")
                     break
 
-                is_safe, reason = rate_limiter.check_rate_limits(account_id)
-                if not is_safe:
-                    with get_short_session() as db:
+                with get_short_session() as db:
+                    is_safe, reason = rate_limiter.check_rate_limits(account_id, db=db)
+                    if not is_safe:
                         job = db.query(Job).filter(Job.id == job_id).first()
                         if job:
                             job.status = "paused"
                             job.error_message = f"Rate limit reached: {reason}"
-                    break
+                        break
 
                 # External stop check
                 with get_short_session() as db:
@@ -264,7 +310,6 @@ async def _mass_dm_runner(job_id: int, account_snap, config: dict):
                     if len(message_timestamps) >= rate_limit_per_hour:
                         logger.info(f"Job {job_id}: Hour limit reached, sleeping 60s")
                         await asyncio.sleep(60)
-                        # don't increment i, loop again
                         continue
 
                 # Process template
@@ -292,6 +337,8 @@ async def _mass_dm_runner(job_id: int, account_snap, config: dict):
                             job.status = "completed"
                             job.completed_at = datetime.utcnow()
                             rate_limiter.record_flood_recovery(account_id)
+
+                i += 1
 
         # Final health sync
         rate_limiter.update_account_stats(account_id, messages_sent=result_dict["sent"])
@@ -332,26 +379,39 @@ def mass_dm_account_task(self, job_id: int):
     redis_client = Redis.from_url(os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0"), decode_responses=True)
     lock = redis_client.lock(f"lock:account:{account_id}", timeout=3600, blocking_timeout=0)
 
-    if not lock.acquire(blocking=False):
-        logger.warning(f"mass_dm_account_task: account {account_id} is locked. Job {job_id} will retry.")
-        raise self.retry(countdown=30, max_retries=20)
-
     try:
-        # ── Fix E: Snapshot account ───────────────────────────────────────────
+        # Acquire lock BEFORE starting activity
+        if not lock.acquire(blocking=False):
+            logger.warning(f"mass_dm_account_task: account {account_id} is locked. Job {job_id} will retry.")
+            raise self.retry(countdown=30, max_retries=20)
+
+        # ── Status Update ──────────────────────────────────────────────────────
         with get_short_session() as db:
-            account = (
-                db.query(TelegramAccount)
-                .options(joinedload(TelegramAccount.proxy))
-                .filter(TelegramAccount.id == account_id)
-                .first()
-            )
-            if not account:
-                raise RuntimeError(f"Account {account_id} not found")
-            account_snap = snapshot_account(account)
+            job = db.query(Job).filter(Job.id == job_id).first()
+            if job:
+                job.status = "running"
+                job.started_at = datetime.utcnow()
+                # ── Fix E: Snapshot account ───────────────────────────────────────────
+                account = (
+                    db.query(TelegramAccount)
+                    .options(joinedload(TelegramAccount.proxy))
+                    .filter(TelegramAccount.id == account_id)
+                    .first()
+                )
+                if not account:
+                    raise RuntimeError(f"Account {account_id} not found")
+                account_snap = snapshot_account(account)
 
         # ── Run async runner ──────────────────────────────────────────────────
         asyncio.run(_mass_dm_runner(job_id, account_snap, config))
 
+    except SoftTimeLimitExceeded:
+        logger.warning(f"mass_dm_account_task: Job {job_id} hit SoftTimeLimit. Pausing gracefully.")
+        with get_short_session() as db:
+            job = db.query(Job).filter(Job.id == job_id).first()
+            if job:
+                job.status = "paused"
+                job.error_message = "Task soft time limit exceeded. Progress saved."
     except Exception as e:
         logger.error(f"mass_dm_account_task: job {job_id} failed: {e}")
         with get_short_session() as db:
@@ -366,4 +426,7 @@ def mass_dm_account_task(self, job_id: int):
             rate_limiter.update_account_stats(account_id) # Ensure latest stats
             sync_health_to_db(account_id)
         
-        lock.release()
+        try:
+            lock.release()
+        except:
+            pass

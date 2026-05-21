@@ -134,7 +134,7 @@ async def pause_job(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found or not owned by user")
     
-    if job.status not in ['running', 'pending']:
+    if job.status not in ['running', 'pending', 'queued']:
         raise HTTPException(status_code=400, detail="Job cannot be paused")
     
     job.status = 'paused'
@@ -157,7 +157,7 @@ async def resume_job(
     if job.status != 'paused':
         raise HTTPException(status_code=400, detail="Job is not paused")
     
-    # Re-dispatch based on job type
+    # Re-dispatch based on job type and transition back to queue
     from importlib import import_module
     try:
         if job.job_type in TASK_MAP:
@@ -166,6 +166,8 @@ async def resume_job(
             task_func = getattr(module, func_name)
             
             queue = get_queue_for_job(job.job_type, job.telegram_account_id)
+            # Clear stale worker task reference before creating a new queue item.
+            job.celery_task_id = None
             res = task_func.apply_async(args=[job.id], queue=queue)
             
             job.status = 'queued'
@@ -308,24 +310,26 @@ async def get_job_reports(
     
     # Recent completed jobs with details
     # Get all completed jobs, prioritize those with completed_at timestamps
-    recent_completed = db.query(Job).filter(
+    recent_completed = db.query(Job, TelegramAccount).outerjoin(
+        TelegramAccount, Job.telegram_account_id == TelegramAccount.id
+    ).filter(
         Job.user_id == current_user.id,
         Job.status == 'completed'
     ).order_by(nullslast(desc(Job.completed_at)), desc(Job.created_at)).limit(10).all()
-    
+
     # Format job status stats
     status_breakdown = {status: count for status, count in job_status_stats}
-    
+
     # Format job type stats
     type_breakdown = [{
         "job_type": job_type,
         "count": count,
         "avg_completion": round(float(max(0.0, min(100.0, (avg_completion or 0)))), 2)
     } for job_type, count, avg_completion in job_type_stats]
-    
+
     # Format recent completed jobs
     recent_jobs_data = []
-    for job in recent_completed:
+    for job, account in recent_completed:
         recent_jobs_data.append({
             "id": job.id,
             "job_type": job.job_type,
@@ -334,7 +338,9 @@ async def get_job_reports(
             "messages_sent": job.messages_sent or 0,
             "messages_planned": job.messages_planned or 0,
             "completed_at": job.completed_at,
-            "duration_hours": round((job.completed_at - job.started_at).total_seconds() / 3600, 2) if job.started_at and job.completed_at else None
+            "duration_hours": round((job.completed_at - job.started_at).total_seconds() / 3600, 2) if job.started_at and job.completed_at else None,
+            "account_id": account.id if account else None,
+            "account_name": account.nickname if account else "N/A"
         })
     
     return {
@@ -358,18 +364,23 @@ async def download_job_reports(
 ):
     """Download comprehensive job reports as CSV"""
     
-    # Get all jobs for the user
-    jobs = db.query(Job).filter(
+    # Get all jobs for the user (joined with TelegramAccount)
+    job_rows = db.query(Job, TelegramAccount).outerjoin(
+        TelegramAccount, Job.telegram_account_id == TelegramAccount.id
+    ).filter(
         Job.user_id == current_user.id
     ).order_by(Job.created_at.desc()).all()
-    
+    jobs = [j for j, _ in job_rows]  # for summary stats section
+
     # Create CSV in memory
     output = io.StringIO()
     writer = csv.writer(output)
-    
+
     # Write header
     writer.writerow([
         'Job ID',
+        'Account ID',
+        'Account Name',
         'Job Type',
         'Description',
         'Status',
@@ -382,17 +393,19 @@ async def download_job_reports(
         'Duration (hours)',
         'Error Message'
     ])
-    
+
     # Write job data
-    for job in jobs:
+    for job, account in job_rows:
         duration = None
         if job.started_at and job.completed_at:
             duration = round((job.completed_at - job.started_at).total_seconds() / 3600, 2)
         elif job.started_at and job.status == 'running':
             duration = round((datetime.utcnow() - job.started_at).total_seconds() / 3600, 2)
-        
+
         writer.writerow([
             job.id,
+            account.id if account else 'N/A',
+            account.nickname if account else 'N/A',
             job.job_type,
             job.user_description or 'N/A',
             job.status,

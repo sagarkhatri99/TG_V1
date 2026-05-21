@@ -31,6 +31,15 @@ class LoginResponse(BaseModel):
     token: str
     user: dict
 
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    subscription_plan: str = "free"
+
+class RegisterResponse(BaseModel):
+    token: str
+    user: dict
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash"""
     return pwd_context.verify(plain_password, hashed_password)
@@ -125,3 +134,54 @@ async def get_current_user(
 @router.post("/token")
 async def login(form_data: LoginRequest, db: Session = Depends(get_db)):
     return await login_for_access_token(form_data, db)
+
+@router.post("/register", response_model=RegisterResponse)
+async def register_user(
+    register_data: RegisterRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Register a new user and return a JWT token.
+    """
+    existing_user = db.query(models.User).filter(
+        models.User.email == register_data.email
+    ).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
+        )
+    new_user = models.User(
+        email=register_data.email,
+        password_hash=get_password_hash(register_data.password),
+        subscription_plan=register_data.subscription_plan,
+        created_at=datetime.utcnow()
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    access_token = create_access_token(
+        data={"sub": str(new_user.id), "email": new_user.email}
+    )
+    return {
+        "token": access_token,
+        "user": {
+            "id": new_user.id,
+            "email": new_user.email,
+            "subscription_plan": new_user.subscription_plan
+        }
+    }
+
+@router.get("/me")
+async def get_current_user_info(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Return the currently authenticated user's info.
+    Used by the frontend to hydrate user state on page reload.
+    """
+    return {
+        "id": current_user.id,
+        "email": current_user.email,
+        "subscription_plan": getattr(current_user, 'subscription_plan', 'free')
+    }

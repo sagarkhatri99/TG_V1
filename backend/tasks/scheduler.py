@@ -18,6 +18,7 @@ queue routing — no inline copy of the map.
 import logging
 from datetime import datetime
 from importlib import import_module
+from typing import Optional
 
 from celery_app import celery_app
 from models import Job
@@ -25,6 +26,63 @@ from core.db_utils import get_short_session
 from core.task_registry import TASK_MAP, get_queue_for_job
 
 logger = logging.getLogger(__name__)
+
+
+def _load_due_jobs(now: datetime) -> list[tuple[int, str, Optional[int]]]:
+    """Read-only phase: load due jobs and fail unknown types."""
+    due_jobs: list[tuple[int, str, Optional[int]]] = []
+    unknown_job_ids: list[int] = []
+
+    with get_short_session() as db:
+        rows = db.query(Job).filter(
+            Job.status == "scheduled",
+            Job.scheduled_at <= now,
+        ).all()
+
+        for job in rows:
+            if job.job_type not in TASK_MAP:
+                unknown_job_ids.append(job.id)
+                continue
+            due_jobs.append((job.id, job.job_type, job.telegram_account_id))
+
+    if unknown_job_ids:
+        with get_short_session() as db:
+            unknown_jobs = db.query(Job).filter(Job.id.in_(unknown_job_ids)).all()
+            for job in unknown_jobs:
+                job.status = "failed"
+                job.error_message = f"Unknown job type for scheduling: {job.job_type}"
+
+    return due_jobs
+
+
+def _dispatch_job(job_id: int, job_type: str, account_id: Optional[int]) -> str:
+    """Dispatch phase: send task to celery and return task id."""
+    module_name, func_name = TASK_MAP[job_type]
+    task_func = getattr(import_module(module_name), func_name)
+    queue = get_queue_for_job(job_type, account_id)
+    result = task_func.apply_async(args=[job_id], queue=queue)
+    logger.info(
+        f"Scheduler: dispatched job {job_id} ({job_type}) "
+        f"-> queue '{queue}', task_id={result.id}"
+    )
+    return result.id
+
+
+def _mark_dispatched(job_id: int, task_id: str) -> None:
+    """Persist queued state and celery task id in one commit."""
+    with get_short_session() as db:
+        job = db.query(Job).filter(Job.id == job_id).first()
+        if job:
+            job.status = "queued"
+            job.celery_task_id = task_id
+
+
+def _mark_dispatch_failed(job_id: int, error_message: str) -> None:
+    with get_short_session() as db:
+        job = db.query(Job).filter(Job.id == job_id).first()
+        if job:
+            job.status = "failed"
+            job.error_message = error_message
 
 
 @celery_app.task(name="tasks.scheduler.dispatch_scheduled_jobs")
@@ -38,70 +96,22 @@ def dispatch_scheduled_jobs():
     failed = []
 
     try:
-        # ── Phase 1: load due jobs, transition to 'queued' ──────────────────
-        # Short session — closes before any apply_async call.
-        job_data: list[tuple[int, str, int | None]] = []  # (job_id, job_type, account_id)
+        now = datetime.utcnow()
+        job_data = _load_due_jobs(now)
+        if not job_data:
+            return {"dispatched": 0}
 
-        with get_short_session() as db:
-            now = datetime.utcnow()
-            due_jobs = db.query(Job).filter(
-                Job.status == "scheduled",
-                Job.scheduled_at <= now,
-            ).all()
+        logger.info(f"Scheduler: found {len(job_data)} due scheduled job(s)")
 
-            if not due_jobs:
-                return {"dispatched": 0}
-
-            logger.info(f"Scheduler: found {len(due_jobs)} due scheduled job(s)")
-
-            for job in due_jobs:
-                if job.job_type not in TASK_MAP:
-                    logger.warning(
-                        f"Scheduler: unknown job_type '{job.job_type}' for job {job.id}"
-                    )
-                    job.status = "failed"
-                    job.error_message = f"Unknown job type for scheduling: {job.job_type}"
-                    failed.append(job.id)
-                    continue
-
-                # Transition status now — before dispatch
-                job.status = "queued"
-                job_data.append((job.id, job.job_type, job.telegram_account_id))
-        # ── DB session closed — connection returned to pool ──────────────────
-
-        # ── Phase 2: dispatch each job, write celery_task_id ────────────────
+        # Dispatch phase only: no query-selection logic mixed here.
         for job_id, job_type, account_id in job_data:
             try:
-                module_name, func_name = TASK_MAP[job_type]
-                task_func = getattr(import_module(module_name), func_name)
-                queue = get_queue_for_job(job_type, account_id)
-
-                # Dispatch first
-                result = task_func.apply_async(args=[job_id], queue=queue)
-
-                # Single commit: status='queued' + celery_task_id together (Gap 4 fix)
-                with get_short_session() as db:
-                    job = db.query(Job).filter(Job.id == job_id).first()
-                    if job:
-                        job.status = "queued"
-                        job.celery_task_id = result.id
-                # get_short_session commits on exit
-
+                task_id = _dispatch_job(job_id, job_type, account_id)
+                _mark_dispatched(job_id, task_id)
                 dispatched.append(job_id)
-                logger.info(
-                    f"Scheduler: dispatched job {job_id} ({job_type}) "
-                    f"→ queue '{queue}', task_id={result.id}"
-                )
-
             except Exception as e:
-                logger.error(
-                    f"Scheduler: failed to dispatch job {job_id} ({job_type}): {e}"
-                )
-                with get_short_session() as db:
-                    job = db.query(Job).filter(Job.id == job_id).first()
-                    if job:
-                        job.status = "failed"
-                        job.error_message = f"Scheduler dispatch failed: {e}"
+                logger.error(f"Scheduler: failed to dispatch job {job_id} ({job_type}): {e}")
+                _mark_dispatch_failed(job_id, f"Scheduler dispatch failed: {e}")
                 failed.append(job_id)
 
     except Exception as e:

@@ -98,7 +98,7 @@ services:
     networks:
       - app-network
     deploy:
-      replicas: 5
+      replicas: 1
 
   worker-short:
     build:

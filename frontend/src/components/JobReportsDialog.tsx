@@ -29,10 +29,12 @@ import {
 } from '@mui/icons-material';
 import api from '../api/Index';
 
+import type { JobReportsResponse } from '../Types/Index';
+
 interface JobReportsDialogProps {
   open: boolean;
   onClose: () => void;
-  reports: any;
+  reports: JobReportsResponse | null;
 }
 
 const JobReportsDialog: React.FC<JobReportsDialogProps> = ({ open, onClose, reports }) => {
@@ -227,6 +229,8 @@ const JobReportsDialog: React.FC<JobReportsDialogProps> = ({ open, onClose, repo
                     <TableHead>
                       <TableRow>
                         <TableCell>ID</TableCell>
+                        <TableCell>Account ID</TableCell>
+                        <TableCell>Account Name</TableCell>
                         <TableCell>Type</TableCell>
                         <TableCell>Description</TableCell>
                         <TableCell>Completion</TableCell>
@@ -239,6 +243,8 @@ const JobReportsDialog: React.FC<JobReportsDialogProps> = ({ open, onClose, repo
                       {recent_completed_jobs.map((job: any) => (
                         <TableRow key={job.id}>
                           <TableCell>{job.id}</TableCell>
+                          <TableCell>{job.account_id ?? 'N/A'}</TableCell>
+                          <TableCell>{job.account_name ?? 'N/A'}</TableCell>
                           <TableCell>{job.job_type}</TableCell>
                           <TableCell>
                             <Typography variant="body2" noWrap sx={{ maxWidth: 150 }}>

@@ -1,12 +1,15 @@
 from fastapi import APIRouter, Depends
-from sqlalchemy import text
 from sqlalchemy.orm import Session
-from celery import current_app as celery_app
+from sqlalchemy import text, func
 from database import get_db
-from models import AccountHealth, TelegramAccount, User
 from routers.auth import get_current_user
+from celery_app import celery_app
+from datetime import datetime, timedelta
+from core.dm_health_policy import get_tier_policy
+from models import AccountHealth, TelegramAccount, User, MessageLog, Job
 import redis
 import os
+import json
 
 router = APIRouter(prefix="/api/health", tags=["health"])
 
@@ -24,52 +27,80 @@ async def get_account_health(
     ).all()
     
     health_data = []
+    now = datetime.utcnow()
+    hour_ago = now - timedelta(hours=1)
+    day_ago = now - timedelta(days=1)
+
     for account in accounts:
-        # Get or create health record
-        health = db.query(AccountHealth).filter(
-            AccountHealth.account_id == account.id
-        ).first()
-        
+        # 1. Get health record
+        health = db.query(AccountHealth).filter(AccountHealth.account_id == account.id).first()
         if not health:
-            # Create default health record if doesn't exist
-            health = AccountHealth(
-                account_id=account.id,
-                health_score=100.0,
-                status="healthy",
-                messages_sent_today=0,
-                groups_joined_today=0,
-                api_calls_today=0,
-                flood_wait_count=0,
-                spam_error_count=0,
-                auth_error_count=0,
-                generic_error_count=0,
-                is_restricted=False,
-                error_history=[]
-            )
+            health = AccountHealth(account_id=account.id, health_score=100.0, status="healthy", error_history=[])
             db.add(health)
             db.commit()
             db.refresh(health)
+
+        # 2. Aggregations from MessageLog (Actual outcome truth)
+        msg_counts = db.query(
+            func.count(MessageLog.id).filter(MessageLog.timestamp >= hour_ago, MessageLog.delivery_status == 'sent').label('hour_sent'),
+            func.count(MessageLog.id).filter(MessageLog.timestamp >= day_ago, MessageLog.delivery_status == 'sent').label('day_sent')
+        ).filter(MessageLog.telegram_account_id == account.id).first()
+
+        # 3. Active Job and Lock Info
+        lock_holder = redis_client.get(f"lock:account:{account.id}")
+        active_job = db.query(Job).filter(
+            Job.telegram_account_id == account.id,
+            Job.status == "running"
+        ).first()
+
+        # 4. Policy Info
+        tier = getattr(account, 'account_trust_tier', 'warming') or 'warming'
+        policy = get_tier_policy(tier)
         
+        # 5. Recommendation Logic
+        recommendation = "Normal operations. Monitor health score."
+        if health.health_score < 80:
+            recommendation = "Health score low. Consider increasing delays or pausing cold outreach."
+        if health.flood_wait_count > 2:
+            recommendation = "Multiple flood waits detected. Manual rest recommended."
+        if tier == 'new':
+            recommendation = "New account. Keep daily volume under 20 DMs."
+
+        # 6. Error Summary
+        error_summary = ""
+        if active_job and active_job.error_message:
+            error_summary = active_job.error_message
+        elif health.error_history:
+            # Latest error from history
+            try:
+                history = health.error_history if isinstance(health.error_history, list) else json.loads(health.error_history)
+                if history:
+                    error_summary = history[-1].get('error', '')
+            except:
+                pass
+
         health_data.append({
             "id": health.id,
             "account_id": account.id,
             "account_nickname": account.nickname,
             "account_phone": account.phone_number,
+            "trust_tier": tier,
+            "warmup_stage": account.warmup_stage,
             "health_score": health.health_score,
             "status": health.status,
-            "messages_sent_today": health.messages_sent_today,
-            "groups_joined_today": health.groups_joined_today,
+            "messages_sent_hour": msg_counts.hour_sent if msg_counts else 0,
+            "messages_sent_today": msg_counts.day_sent if msg_counts else 0,
+            "enforced_min_delay": policy.min_delay,
+            "enforced_max_delay": policy.max_delay,
+            "active_job_id": active_job.id if active_job else None,
+            "active_job_type": active_job.job_type if active_job else None,
+            "lock_holder": lock_holder,
+            "is_restricted": health.is_restricted,
+            "last_activity": health.last_activity,
+            "latest_error_summary": error_summary,
+            "recommendation_reason": recommendation,
             "api_calls_today": health.api_calls_today,
             "flood_wait_count": health.flood_wait_count,
-            "spam_error_count": health.spam_error_count,
-            "auth_error_count": health.auth_error_count,
-            "generic_error_count": health.generic_error_count,
-            "is_restricted": health.is_restricted,
-            "restriction_reason": health.restriction_reason,
-            "restriction_until": health.restriction_until,
-            "last_activity": health.last_activity,
-            "last_error_time": health.last_error_time,
-            "error_history": health.error_history or []
         })
     
     return health_data

@@ -80,10 +80,20 @@ class Settings:
             "http://localhost:8000",
         ]
 
-    # Rate Limiting
-    GLOBAL_MESSAGE_LIMIT: int = 30   # messages per minute globally
-    USER_DAILY_LIMIT: int = 50       # DMs per day per account
-    GROUP_DAILY_LIMIT: int = 100     # Group messages per day per account
+    # Rate Limiting (Authoritative source: core.dm_health_policy)
+    @property
+    def GLOBAL_MESSAGE_LIMIT(self) -> int:
+        from core.dm_health_policy import SAFE_MESSAGES_PER_HOUR_LIMIT
+        return SAFE_MESSAGES_PER_HOUR_LIMIT
+
+    @property
+    def USER_DAILY_LIMIT(self) -> int:
+        from core.dm_health_policy import SAFE_MESSAGES_PER_DAY_LIMIT
+        return SAFE_MESSAGES_PER_DAY_LIMIT
+
+    @property
+    def GROUP_DAILY_LIMIT(self) -> int:
+        return 100
 
 
 settings = Settings()

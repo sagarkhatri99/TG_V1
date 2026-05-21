@@ -17,6 +17,7 @@ import sqlite3
 import random
 from datetime import datetime, timedelta
 from redis import Redis
+from redis.exceptions import LockError
 
 from celery.exceptions import SoftTimeLimitExceeded
 from celery_app import celery_app
@@ -120,6 +121,19 @@ async def _auto_promo_runner(job_id: int, account_snap, config: dict):
                             job.status = "completed"
                     break
 
+                # Global account safety check
+                with get_short_session() as db:
+                    is_safe, reason = rate_limiter.check_rate_limits(account_snap.id, db=db)
+                    if not is_safe:
+                        job = db.query(Job).filter(Job.id == job_id).first()
+                        if job:
+                            job.status = "paused"
+                            job.error_message = f"Rate limit reached: {reason}"
+                        logger.warning(
+                            f"Auto promo job {job_id} paused due to account rate limits: {reason}"
+                        )
+                        break
+
                 # Rate limiting
                 if rate_limit_per_hour:
                     cutoff = datetime.utcnow() - timedelta(hours=1)
@@ -164,10 +178,21 @@ async def _auto_promo_runner(job_id: int, account_snap, config: dict):
                     logger.warning(
                         f"Flood wait error for job {job_id}: {e}. Waiting {e.seconds}s"
                     )
-                    # sync_health_to_db is self-sufficient
+                    should_continue, action, details = rate_limiter.handle_flood_incident(
+                        account_snap.id, e.seconds, job_id
+                    )
                     sync_health_to_db(account_snap.id, extra_stats={
-                        "messages_sent_today": 0 # We'll sync real count at the end
+                        "messages_sent_today": 0  # We'll sync real count at the end
                     })
+                    if not should_continue:
+                        with get_short_session() as db:
+                            job = db.query(Job).filter(Job.id == job_id).first()
+                            if job:
+                                job.status = "paused" if action != "CRITICAL_STOP" else "failed"
+                                job.error_message = (
+                                    f"Flood incident: {action}. wait={e.seconds}s; details={details}"
+                                )
+                        break
                     await asyncio.sleep(e.seconds)
                     continue
 
@@ -260,4 +285,13 @@ def auto_promo_task(self, job_id: int):
                 job = db.query(Job).filter(Job.id == job_id).first()
                 sent = job.messages_sent if job else 0
             sync_health_to_db(account_id, extra_stats={"messages_sent_today": sent})
-        lock.release()
+        try:
+            lock.release()
+        except LockError as e:
+            logger.warning(
+                f"auto_promo_task: lock release failed for account {account_id}: {e}"
+            )
+        except Exception as e:
+            logger.warning(
+                f"auto_promo_task: unexpected lock release failure for account {account_id}: {e}"
+            )

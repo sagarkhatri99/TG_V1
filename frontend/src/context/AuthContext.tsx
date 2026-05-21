@@ -1,6 +1,5 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
-
-
+import api from '../api/Index';
 
 interface User {
     id: number;
@@ -25,14 +24,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        if (token) {
-            // Just mark as authenticated, don't fetch user profile
-            // The user data was already returned from login or is not yet available
-            setIsLoading(false);
-        } else {
-            setIsLoading(false);
-        }
-    }, [token]);
+        const initializeAuth = async () => {
+            const storedToken = localStorage.getItem('token');
+            if (!storedToken) {
+                // No token — nothing to hydrate, just stop loading
+                setIsLoading(false);
+                return;
+            }
+
+            try {
+                const response = await api.get('/api/auth/me');
+                setUser(response.data as User);
+            } catch {
+                // Token is invalid or expired — clear it
+                localStorage.removeItem('token');
+                setToken(null);
+                setUser(null);
+            } finally {
+                // Always runs: whether /me succeeded or failed
+                setIsLoading(false);
+            }
+        };
+
+        initializeAuth();
+        // Run only once on mount
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const login = (newToken: string, userData?: User) => {
         localStorage.setItem('token', newToken);
@@ -47,7 +64,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setToken(null);
         setUser(null);
     };
-
 
     return (
         <AuthContext.Provider

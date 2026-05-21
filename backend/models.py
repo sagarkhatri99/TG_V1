@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, Float, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, Text, Float, ForeignKey, JSON, UniqueConstraint
 from sqlalchemy.orm import relationship
 from database import Base
 from datetime import datetime
@@ -40,6 +40,7 @@ class TelegramAccount(Base):
     
     # Warmup fields
     warmup_stage = Column(String(50), default="pending")  # pending, stage1, stage2, stage3, ready
+    account_trust_tier = Column(String(20), default="warming")  # new, warming, trusted, custom
     warmup_started_at = Column(DateTime, nullable=True)
     warmup_completed_at = Column(DateTime, nullable=True)
     daily_message_limit = Column(Integer, default=5)  # Increases per stage
@@ -117,19 +118,23 @@ class Job(Base):
     batch_number = Column(Integer, nullable=True)  # Which batch this is (1-indexed)
     total_batches = Column(Integer, nullable=True)  # Total number of batches for this distribution
     batch_user_ids = Column(Text, nullable=True)  # JSON array of user IDs for this batch
+    telegram_account = relationship("TelegramAccount", foreign_keys=[telegram_account_id])
 
 class MessageLog(Base):
     __tablename__ = "message_logs"
+    __table_args__ = (
+        UniqueConstraint("job_id", "target_user_id", name="uq_job_target"),
+    )
     
     id = Column(Integer, primary_key=True, index=True)
-    telegram_account_id = Column(Integer, ForeignKey("telegram_accounts.id"))
-    job_id = Column(Integer, ForeignKey("jobs.id"), nullable=True)
-    target_user_id = Column(String(50))
+    telegram_account_id = Column(Integer, ForeignKey("telegram_accounts.id"), index=True)
+    job_id = Column(Integer, ForeignKey("jobs.id"), nullable=True, index=True)
+    target_user_id = Column(String(50), index=True)
     target_username = Column(String(100))
     message_content = Column(Text)
     ai_relevance_score = Column(Float)
-    delivery_status = Column(String(20))
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    delivery_status = Column(String(20), index=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
 
 class ActionLog(Base):
     __tablename__ = "action_logs"

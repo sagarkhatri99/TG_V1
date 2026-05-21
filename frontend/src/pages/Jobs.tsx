@@ -21,6 +21,7 @@ import { PlayArrow, Pause, Delete, Refresh, Download, RestartAlt, Analytics } fr
 import type { AxiosResponse } from 'axios';
 import api, { endpoints } from '../api/Index';
 import JobReportsDialog from '../components/JobReportsDialog';
+import type { JobReportsResponse } from '../Types/Index';
 
 interface Job {
   id: number;
@@ -43,7 +44,7 @@ export default function Jobs() {
   const [loading, setLoading] = useState(true);
   const [alert, setAlert] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   const [showReports, setShowReports] = useState(false);
-  const [reports, setReports] = useState<any>(null);
+  const [reports, setReports] = useState<JobReportsResponse | null>(null);
   const [reportsLoading, setReportsLoading] = useState(false);
 
   const fetchJobs = async () => {

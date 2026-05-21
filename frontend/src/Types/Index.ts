@@ -157,3 +157,38 @@ export interface StartCampaignResponse {
   task_id: string;
   status: string;
 }
+
+export interface JobReportSummary {
+  total_jobs: number;
+  jobs_last_30_days: number;
+  completion_rate: number;
+  total_messages_sent: number;
+  total_messages_planned: number;
+  overall_completion_percentage: number;
+}
+
+export interface JobTypeBreakdown {
+  job_type: string;
+  count: number;
+  avg_completion: number;
+}
+
+export interface RecentCompletedJob {
+  id: number;
+  job_type: string;
+  user_description: string | null;
+  completion_percentage: number;
+  messages_sent: number;
+  messages_planned: number;
+  completed_at: string;
+  duration_hours: number | null;
+  account_id: number | null;
+  account_name: string;
+}
+
+export interface JobReportsResponse {
+  summary: JobReportSummary;
+  status_breakdown: Record<string, number>;
+  job_type_breakdown: JobTypeBreakdown[];
+  recent_completed_jobs: RecentCompletedJob[];
+}

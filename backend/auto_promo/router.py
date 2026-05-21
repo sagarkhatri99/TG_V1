@@ -27,7 +27,6 @@ async def create_auto_promo_job(
     min_interval: Optional[int] = Form(None),
     max_interval: Optional[int] = Form(None),
     stop_after_hours: Optional[int] = Form(None),
-    rate_limit_per_hour: Optional[int] = Form(None),
     image_file: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(plan_based_dependency("auto_promo"))
@@ -76,7 +75,6 @@ async def create_auto_promo_job(
         "min_interval": min_interval,
         "max_interval": max_interval,
         "stop_after_hours": stop_after_hours,
-        "rate_limit_per_hour": rate_limit_per_hour,
     }
 
     # Parse scheduled_at if provided

@@ -33,6 +33,7 @@ celery_app = Celery(
 from kombu import Queue
 
 celery_app.conf.update(
+    broker_connection_retry_on_startup=True,
     task_track_started=True,
     result_expires=3600,
     task_serializer='json',

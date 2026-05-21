@@ -11,6 +11,7 @@ import shutil
 import os
 from .tasks import mass_dm_bot_task
 from datetime import datetime, timedelta
+from core.task_registry import get_queue_for_job
 
 router = APIRouter()
 
@@ -98,6 +99,10 @@ async def create_mass_dm_bot_job(
 
     # Step 4: Dispatch the task (only if not scheduled)
     if not is_scheduled:
-        mass_dm_bot_task.delay(new_job.id)
+        queue = get_queue_for_job("mass_dm_bot", None)
+        celery_result = mass_dm_bot_task.apply_async(args=[new_job.id], queue=queue)
+        new_job.status = "queued"
+        new_job.celery_task_id = celery_result.id
+        db.commit()
 
     return {"job_id": new_job.id, "message": "Mass DM Bot job created successfully."}

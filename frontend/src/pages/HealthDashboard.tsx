@@ -31,21 +31,23 @@ interface AccountHealth {
   account_id: number;
   account_nickname: string;
   account_phone: string;
+  trust_tier: string;
+  warmup_stage: string;
   health_score: number;
   status: string;
+  messages_sent_hour: number;
   messages_sent_today: number;
-  groups_joined_today: number;
+  enforced_min_delay: number;
+  enforced_max_delay: number;
+  active_job_id?: number;
+  active_job_type?: string;
+  lock_holder?: string;
+  latest_error_summary: string;
+  recommendation_reason: string;
   api_calls_today: number;
   flood_wait_count: number;
-  spam_error_count: number;
-  auth_error_count: number;
-  generic_error_count: number;
   is_restricted: boolean;
-  restriction_reason?: string;
-  restriction_until?: string;
   last_activity: string;
-  last_error_time?: string;
-  error_history: any[];
 }
 
 export default function HealthDashboard() {
@@ -55,25 +57,36 @@ export default function HealthDashboard() {
   const [alert, setAlert] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  useEffect(() => {
-    fetchHealthData();
-  }, []);
-
-  const fetchHealthData = useCallback(async (silent = false) => {
+  const fetchHealthData = useCallback(async (silent = false, signal?: AbortSignal) => {
+    if (refreshing) return;
     try {
       if (!silent) setLoading(true);
-      else setRefreshing(true);
-      const response = await api.get('/api/health/accounts');
+      setRefreshing(true);
+      const response = await api.get('/api/health/accounts', { signal });
       setHealthData(response.data || []);
       setLastUpdated(new Date());
     } catch (error: any) {
+      if (error.name === 'CanceledError' || error.name === 'AbortError') return;
       console.error('Failed to fetch health data:', error);
       setAlert({ type: 'error', message: error.response?.data?.detail || 'Failed to load health data' });
-      setHealthData([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
+  }, [refreshing]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchHealthData(false, controller.signal);
+
+    const intervalId = setInterval(() => {
+      fetchHealthData(true, controller.signal);
+    }, 20000); // 20 second polling
+
+    return () => {
+      clearInterval(intervalId);
+      controller.abort();
+    };
   }, []);
 
   const getHealthColor = (score: number) => {
@@ -98,10 +111,7 @@ export default function HealthDashboard() {
     }
   };
 
-  const getTotalErrors = (account: AccountHealth) => {
-    return account.flood_wait_count + account.spam_error_count +
-      account.auth_error_count + account.generic_error_count;
-  };
+
 
   if (loading) {
     return (
@@ -196,12 +206,12 @@ export default function HealthDashboard() {
         <Table>
           <TableHead>
             <TableRow>
-              <TableCell>Account</TableCell>
+              <TableCell>Account / Tier</TableCell>
               <TableCell>Health Score</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Today's Activity</TableCell>
-              <TableCell>Errors</TableCell>
-              <TableCell>Last Activity</TableCell>
+              <TableCell>Status / Job</TableCell>
+              <TableCell>Throughput (Hour/24h)</TableCell>
+              <TableCell>Protection / Delays</TableCell>
+              <TableCell>Recommendation</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -219,7 +229,13 @@ export default function HealthDashboard() {
                       <Typography variant="body2" fontWeight="bold">
                         {account.account_nickname}
                       </Typography>
-                      <Typography variant="caption" color="text.secondary">
+                      <Chip 
+                        label={account.trust_tier.toUpperCase()} 
+                        size="small" 
+                        variant="outlined" 
+                        sx={{ mt: 0.5, fontSize: '0.65rem', height: 20 }}
+                      />
+                      <Typography variant="caption" color="text.secondary" display="block">
                         {account.account_phone}
                       </Typography>
                     </Box>
@@ -227,7 +243,7 @@ export default function HealthDashboard() {
                   <TableCell>
                     <Box display="flex" alignItems="center" gap={1}>
                       {getHealthIcon(account.health_score)}
-                      <Box sx={{ width: '100%', maxWidth: 100 }}>
+                      <Box sx={{ width: '100%', maxWidth: 80 }}>
                         <LinearProgress
                           variant="determinate"
                           value={account.health_score}
@@ -243,62 +259,48 @@ export default function HealthDashboard() {
                       color={getStatusColor(account.status)}
                       size="small"
                     />
-                    {account.is_restricted && (
-                      <Chip
-                        label="Restricted"
-                        color="error"
-                        size="small"
-                        sx={{ ml: 1 }}
-                      />
+                    {account.active_job_id && (
+                      <Box sx={{ mt: 1 }}>
+                        <Chip 
+                          label={`Job #${account.active_job_id} (${account.active_job_type})`} 
+                          size="small" 
+                          color="primary"
+                          sx={{ fontSize: '0.7rem' }}
+                        />
+                      </Box>
+                    )}
+                    {account.lock_holder && (
+                       <Typography variant="caption" display="block" sx={{ color: 'warning.main', mt: 0.5 }}>
+                         🔒 Locked by Worker
+                       </Typography>
                     )}
                   </TableCell>
                   <TableCell>
-                    <Typography variant="caption" display="block">
-                      📨 {account.messages_sent_today} messages
+                    <Typography variant="body2">
+                      <strong>{account.messages_sent_hour}</strong> / hr
                     </Typography>
-                    <Typography variant="caption" display="block">
-                      📞 {account.api_calls_today} API calls
-                    </Typography>
-                    <Typography variant="caption" display="block">
-                      👥 {account.groups_joined_today} groups joined
+                    <Typography variant="caption" color="text.secondary">
+                      {account.messages_sent_today} in 24h
                     </Typography>
                   </TableCell>
                   <TableCell>
-                    <Box>
-                      <Chip
-                        label={`${getTotalErrors(account)} total`}
-                        size="small"
-                        color={getTotalErrors(account) > 0 ? 'error' : 'default'}
-                      />
-                      {getTotalErrors(account) > 0 && (
-                        <Box sx={{ mt: 1 }}>
-                          {account.flood_wait_count > 0 && (
-                            <Typography variant="caption" display="block">
-                              ⏱️ {account.flood_wait_count} flood wait
-                            </Typography>
-                          )}
-                          {account.spam_error_count > 0 && (
-                            <Typography variant="caption" display="block">
-                              ⚠️ {account.spam_error_count} spam errors
-                            </Typography>
-                          )}
-                          {account.auth_error_count > 0 && (
-                            <Typography variant="caption" display="block">
-                              🔐 {account.auth_error_count} auth errors
-                            </Typography>
-                          )}
-                        </Box>
-                      )}
-                    </Box>
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="caption">
-                      {new Date(account.last_activity).toLocaleString()}
+                    <Typography variant="caption" display="block">
+                      ⏱️ {account.enforced_min_delay}s - {account.enforced_max_delay}s
                     </Typography>
-                    {account.last_error_time && (
+                    {account.flood_wait_count > 0 && (
                       <Typography variant="caption" display="block" color="error">
-                        Last error: {new Date(account.last_error_time).toLocaleString()}
+                        ⚠️ {account.flood_wait_count} Floods
                       </Typography>
+                    )}
+                  </TableCell>
+                  <TableCell sx={{ maxWidth: 200 }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                      {account.recommendation_reason}
+                    </Typography>
+                    {account.latest_error_summary && (
+                      <Alert severity="error" icon={false} sx={{ py: 0, mt: 0.5, fontSize: '0.7rem' }}>
+                        {account.latest_error_summary.substring(0, 50)}...
+                      </Alert>
                     )}
                   </TableCell>
                 </TableRow>

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Form, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Form, UploadFile, File, BackgroundTasks
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional
@@ -209,7 +209,12 @@ async def list_accounts(db: Session = Depends(get_db), current_user: User = Depe
 
 
 @router.post("/{account_id}/test")
-async def test_account_connection(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(plan_based_dependency("accounts"))):
+async def test_account_connection(
+    account_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(plan_based_dependency("accounts"))
+):
     # Phase 1: Get snapshot (Short Session 1)
     # We use the provided 'db' from Depends(get_db) which is fine for this quick read
     account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id, TelegramAccount.user_id == current_user.id).first()
@@ -243,8 +248,8 @@ async def test_account_connection(account_id: int, db: Session = Depends(get_db)
                 acc.status = 'error'
         raise HTTPException(status_code=400, detail=f"Connection test failed: {str(e)}")
     finally:
-        # Always disconnect after a test
-        await session_manager.disconnect_client(account_id)
+        # Defer disconnect to avoid lock contention in request context
+        background_tasks.add_task(session_manager.disconnect_client, account_id)
 
 @router.post("/{account_id}/pause")
 async def pause_account(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(plan_based_dependency("accounts"))):
@@ -258,7 +263,7 @@ async def pause_account(account_id: int, db: Session = Depends(get_db), current_
     from models import Job
     running_jobs = db.query(Job).filter(
         Job.telegram_account_id == account_id,
-        Job.status.in_(['pending', 'running'])
+        Job.status.in_(['pending', 'queued', 'running'])
     ).all()
     for job in running_jobs:
         job.status = 'paused'
@@ -266,7 +271,12 @@ async def pause_account(account_id: int, db: Session = Depends(get_db), current_
     return {"status": "paused", "jobs_affected": len(running_jobs)}
 
 @router.post("/{account_id}/resume")
-async def resume_account(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def resume_account(
+    account_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
     # Phase 1: Get snapshot
     account = db.query(TelegramAccount).filter(TelegramAccount.id == account_id, TelegramAccount.user_id == current_user.id).first()
     if not account:
@@ -338,8 +348,8 @@ async def resume_account(account_id: int, db: Session = Depends(get_db), current
             error_msg = "Invalid or missing Telegram API credentials."
         raise HTTPException(status_code=400, detail=f"Connection test failed: {error_msg}")
     finally:
-        # Always disconnect after test
-        await session_manager.disconnect_client(account_id)
+        # Defer disconnect to avoid lock contention in request context
+        background_tasks.add_task(session_manager.disconnect_client, account_id)
 
 @router.delete("/{account_id}")
 async def delete_account(account_id: int, db: Session = Depends(get_db), current_user: User = Depends(plan_based_dependency("accounts"))):

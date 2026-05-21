@@ -17,15 +17,22 @@ TELEGRAM OFFICIAL LIMITS (from API documentation):
 - Repeated FloodWait = temporary restriction (hours/days)
 - Suspicious patterns = permanent ban
 """
-
+import enum
+from sqlalchemy.orm import Session
 import logging
 from datetime import datetime, timedelta
 from typing import Tuple, Optional
-from sqlalchemy.orm import Session
-from models import TelegramAccount, AccountHealth
+from sqlalchemy import func
+
 from database import SessionLocal
-import enum
-import sqlite3
+from models import AccountHealth
+from core.dm_health_policy import (
+    get_tier_policy, 
+    SAFE_MESSAGES_PER_HOUR_LIMIT, 
+    SAFE_MESSAGES_PER_DAY_LIMIT,
+    PAUSE_ON_FLOODWAIT_SECONDS,
+    PAUSE_ON_CONSECUTIVE_FLOODS
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,14 +66,14 @@ class TelegramRateLimiter:
     MESSAGES_PER_HOUR_NORMAL = 1000  # Normal account
     MESSAGES_PER_HOUR_BUSINESS = 5000  # Business account
     
-    # Our safe thresholds (stay well below Telegram limits)
-    SAFE_MESSAGES_PER_HOUR = 300  # Very conservative
-    SAFE_MESSAGES_PER_DAY = 5000
+    # Safety thresholds (Default Legacy - Tiers will override)
+    SAFE_MESSAGES_PER_HOUR = SAFE_MESSAGES_PER_HOUR_LIMIT
+    SAFE_MESSAGES_PER_DAY = SAFE_MESSAGES_PER_DAY_LIMIT
     
     # Flood response strategy
     FLOOD_TOLERANCE = {
-        FloodSeverity.LOW: {"max_consecutive": 3, "backoff_multiplier": 1.5},
-        FloodSeverity.MEDIUM: {"max_consecutive": 2, "backoff_multiplier": 2.0},
+        FloodSeverity.LOW: {"max_consecutive": PAUSE_ON_CONSECUTIVE_FLOODS + 1, "backoff_multiplier": 1.5},
+        FloodSeverity.MEDIUM: {"max_consecutive": PAUSE_ON_CONSECUTIVE_FLOODS, "backoff_multiplier": 2.0},
         FloodSeverity.HIGH: {"max_consecutive": 1, "backoff_multiplier": 4.0},
         FloodSeverity.CRITICAL: {"max_consecutive": 0, "backoff_multiplier": 0},  # Auto-stop
     }
@@ -134,21 +141,55 @@ class TelegramRateLimiter:
         
         return len(self.account_stats[account_id]["messages_sent_day"])
     
-    def check_rate_limits(self, account_id: int) -> Tuple[bool, Optional[str]]:
+    def check_rate_limits(self, account_id: int, db: Session = None) -> Tuple[bool, Optional[str]]:
         """
-        Check if account is within safe limits.
-        Returns (is_safe, reason_if_not_safe)
+        Check if account is within safe limits using SQL aggregation.
         """
-        hour_count = self.get_hour_message_count(account_id)
-        day_count = self.get_day_message_count(account_id)
-        
-        if hour_count >= self.SAFE_MESSAGES_PER_HOUR:
-            return False, f"Hour limit reached: {hour_count}/{self.SAFE_MESSAGES_PER_HOUR}"
-        
-        if day_count >= self.SAFE_MESSAGES_PER_DAY:
-            return False, f"Day limit reached: {day_count}/{self.SAFE_MESSAGES_PER_DAY}"
-        
-        return True, None
+        if not db:
+            db = SessionLocal()
+            managed_session = True
+        else:
+            managed_session = False
+            
+        try:
+            from models import MessageLog, TelegramAccount
+            
+            # 1. Get account tier
+            acc = db.query(TelegramAccount).filter(TelegramAccount.id == account_id).first()
+            tier = getattr(acc, 'account_trust_tier', 'warming') or 'warming'
+            policy = get_tier_policy(tier)
+            
+            # 2. Check Hourly (successful only)
+            hour_ago = datetime.utcnow() - timedelta(hours=1)
+            hour_count = db.query(func.count(MessageLog.id)).filter(
+                MessageLog.telegram_account_id == account_id,
+                MessageLog.timestamp >= hour_ago,
+                MessageLog.delivery_status == 'sent'
+            ).scalar() or 0
+            
+            # 3. Check Daily (successful only)
+            day_ago = datetime.utcnow() - timedelta(days=1)
+            day_count = db.query(func.count(MessageLog.id)).filter(
+                MessageLog.telegram_account_id == account_id,
+                MessageLog.timestamp >= day_ago,
+                MessageLog.delivery_status == 'sent'
+            ).scalar() or 0
+            
+            # Enforce stricter of (tier cap, global limit)
+            hour_limit = min(policy.hour_cap, self.SAFE_MESSAGES_PER_HOUR)
+            day_limit = min(policy.day_cap, self.SAFE_MESSAGES_PER_DAY)
+            
+            if hour_count >= hour_limit:
+                return False, f"Hourly tier cap reached: {hour_count}/{hour_limit} (Tier: {tier})"
+            
+            if day_count >= day_limit:
+                return False, f"Daily tier cap reached: {day_count}/{day_limit} (Tier: {tier})"
+                
+            return True, None
+            
+        finally:
+            if managed_session:
+                db.close()
     
     def handle_flood_incident(
         self, account_id: int, flood_wait_seconds: int, current_job_id: int
@@ -166,6 +207,11 @@ class TelegramRateLimiter:
             self.update_account_stats(account_id)
         
         stats = self.account_stats[account_id]
+        # Immediate pause for critical flood waits
+        if flood_wait_seconds >= PAUSE_ON_FLOODWAIT_SECONDS:
+            logger.warning(f"Critical FloodWait {flood_wait_seconds}s for account {account_id}. Triggering PAUSE.")
+            return False, "PAUSE_JOB", {"severity": "critical", "seconds": flood_wait_seconds}
+            
         severity = self.categorize_flood_severity(flood_wait_seconds)
         
         # Record incident
