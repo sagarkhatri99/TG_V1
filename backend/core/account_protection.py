@@ -313,6 +313,104 @@ class TelegramRateLimiter:
         }
 
 
+def is_within_operating_hours(account_id: int, db: Session = None) -> Tuple[bool, str]:
+    """
+    Check if the account is within its defined operating (wake) hours.
+    Returns (is_allowed, reason)
+    """
+    _owns_session = False
+    if db is None:
+        db = SessionLocal()
+        _owns_session = True
+
+    try:
+        from models import TelegramAccount
+        from datetime import datetime
+
+        acc = db.query(TelegramAccount).filter(TelegramAccount.id == account_id).first()
+        if not acc:
+            return False, "Account not found"
+
+        start_h = getattr(acc, "sleep_hour_start", None)
+        end_h = getattr(acc, "sleep_hour_end", None)
+
+        if start_h is None or end_h is None:
+            return True, ""  # No sleep hours defined
+
+        from core.config import settings
+        if not settings.ENABLE_OPERATING_HOURS_CHECK:
+            return True, ""
+
+        now = datetime.utcnow()
+        current_h = now.hour
+
+        # Check if current hour is within the SLEEP interval
+        is_sleeping = False
+        if start_h < end_h:
+            # Simple case: e.g., sleep 23 to 07
+            is_sleeping = (start_h <= current_h < end_h)
+        else:
+            # Wrap around midnight: e.g., sleep 23 to 07
+            is_sleeping = (current_h >= start_h or current_h < end_h)
+
+        if is_sleeping:
+            return False, f"Account is in sleep mode ({start_h}:00 - {end_h}:00 UTC)"
+
+        return True, ""
+    except Exception as e:
+        logger.error(f"Error checking operating hours for account {account_id}: {e}")
+        return True, ""  # Fail open
+    finally:
+        if _owns_session:
+            db.close()
+
+
+def is_account_safe_for_job(account_id: int, db: Session = None) -> Tuple[bool, str]:
+    """
+    Safety Circuit Breaker: Check if an account is healthy enough to start/continue a job.
+
+    Returns (is_safe, reason)
+    """
+    _owns_session = False
+    if db is None:
+        db = SessionLocal()
+        _owns_session = True
+
+    try:
+        from models import AccountHealth, TelegramAccount
+
+        # 1. Check account existence and status
+        acc = db.query(TelegramAccount).filter(TelegramAccount.id == account_id).first()
+        if not acc:
+            return False, "Account not found"
+
+        if acc.status != "active":
+            return False, f"Account status is '{acc.status}', expected 'active'"
+
+        # 2. Check health record
+        health = db.query(AccountHealth).filter(AccountHealth.account_id == account_id).first()
+        if not health:
+            # If no health record exists, it's a new account, assume safe but log it
+            logger.info(f"Account {account_id} has no health record yet. Allowing first job.")
+            return True, ""
+
+        if health.status in ("restricted", "banned"):
+            return False, f"Account health status is '{health.status}'"
+
+        from core.config import settings
+        if health.health_score < settings.SAFETY_SCORE_THRESHOLD:
+            return False, f"Account health score too low: {health.health_score:.1f}/100"
+
+        return True, ""
+
+    except Exception as e:
+        logger.error(f"Error in safety circuit breaker for account {account_id}: {e}")
+        return False, f"Safety check error: {str(e)}"
+    finally:
+        if _owns_session:
+            db.close()
+
+
 def sync_health_to_db(
     account_id: int,
     db: Session = None,
