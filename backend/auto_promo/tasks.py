@@ -84,6 +84,7 @@ async def _auto_promo_runner(job_id: int, account_snap, config: dict):
 
             while True:
                 # Check job/account status externally
+                should_continue = True
                 with get_short_session() as db:
                     job = db.query(Job).filter(Job.id == job_id).first()
                     account = db.query(TelegramAccount).filter(
@@ -94,18 +95,25 @@ async def _auto_promo_runner(job_id: int, account_snap, config: dict):
                         logger.info(
                             f"Auto promo job {job_id} stopped. Status: {job.status if job else 'deleted'}"
                         )
-                        break
+                        should_continue = False
 
-                    # Check for yield break
-                    current_time = datetime.utcnow()
-                    if (current_time - last_yield_time).total_seconds() > (
-                        yield_interval_minutes * 60
-                    ):
-                        logger.info(
-                            f"Auto promo job {job_id} taking a brief 30s break"
-                        )
-                        # We just sleep, the short session above will close
-                        # and be re-opened after sleep
+                if not should_continue:
+                    break
+
+                # ── Stage 1: Operating Hours Check ───────────────────────
+                from core.account_protection import is_within_operating_hours
+                is_awake = True
+                with get_short_session() as check_db:
+                    is_awake, reason = is_within_operating_hours(account_snap.id, db=check_db)
+
+                if not is_awake:
+                    logger.info(f"Auto promo job {job_id}: {reason}. Sleeping 10 minutes.")
+                    # Release session while sleeping
+                    await session_manager.disconnect_client(account_snap.id)
+                    await asyncio.sleep(600)
+                    # Reconnect after sleep
+                    client = await session_manager.get_client(account_snap)
+                    continue
                 
                 # Check for yield after session close
                 if (datetime.utcnow() - last_yield_time).total_seconds() > (yield_interval_minutes * 60):
@@ -231,6 +239,16 @@ def auto_promo_task(self, job_id: int):
             )
             return
         account_id = job.telegram_account_id
+
+        # ── Stage 1: Safety Circuit Breaker ───────────────────────────────────
+        from core.account_protection import is_account_safe_for_job
+        is_safe, reason = is_account_safe_for_job(account_id, db=db)
+        if not is_safe:
+            logger.warning(f"auto_promo_task: Safety Circuit Breaker triggered for account {account_id}: {reason}")
+            job.status = "failed"
+            job.error_message = f"Safety Circuit Breaker: {reason}"
+            db.commit()
+            return
         config = json.loads(job.config) if job.config else {}
         job.status = "running"
         job.started_at = datetime.utcnow()

@@ -37,7 +37,7 @@ logger = get_logger(__name__)
 # Setup rate limiting
 limiter = Limiter(key_func=get_remote_address)
 
-app = FastAPI(title="TG Tools Backend", version="2.0.0")
+app = FastAPI(title="TG Tools Backend", version=settings.APP_VERSION)
 app.state.limiter = limiter
 
 app.add_middleware(
@@ -117,6 +117,18 @@ async def startup_event():
         sys.exit(1)
     logger.info("✅ Schema verified — %d tables present.", len(tables))
 
+    # ── 5. Register version in Redis for workers to sync ──────────────────
+    if settings.ENABLE_VERSION_CHECK:
+        import redis as _redis
+        try:
+            r = _redis.from_url(settings.REDIS_URL)
+            r.set("system:app_version", settings.APP_VERSION)
+            logger.info("✅ Registered version %s in Redis for worker sync.", settings.APP_VERSION)
+        except Exception as exc:
+            logger.error("❌ Failed to register version in Redis: %s", exc)
+            if settings.ENVIRONMENT == "production":
+                 sys.exit(1)
+
     logger.info("✅ Application startup complete.")
 
 
@@ -154,7 +166,7 @@ def health_check(request: Request):
             detail={"status": "unhealthy", "failures": failures},
         )
 
-    return {"status": "ok", "version": "2.0.0", "db": "ok", "redis": "ok"}
+    return {"status": "ok", "version": settings.APP_VERSION, "db": "ok", "redis": "ok"}
 
 
 @app.get("/stats")

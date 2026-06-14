@@ -38,6 +38,20 @@ class SessionManager:
 
     async def get_client(self, account, allow_unauth: bool = False) -> TelegramClient:
         """Return a connected TelegramClient for the given account."""
+        # ── Stage 1: Lightweight Proxy Pre-flight ────────────────────────────
+        proxy_obj = getattr(account, "proxy", None)
+        if not proxy_obj and getattr(account, "proxy_id", None):
+            with SessionLocal() as db:
+                proxy_obj = db.query(Proxy).filter(Proxy.id == account.proxy_id).first()
+
+        if proxy_obj:
+            from core.proxy_utils import verify_proxy_connectivity
+            is_reachable, reason = verify_proxy_connectivity(proxy_obj)
+            if not is_reachable:
+                logger.error(f"Proxy pre-flight failed for account {account.id}: {reason}")
+                raise RuntimeError(f"Proxy Unreachable: {reason}")
+            logger.info(f"Proxy pre-flight passed for account {account.id}")
+
         key = self._key(account.id)
         if key not in self.active_clients:
             self.active_clients[key] = await self._create_client(account)

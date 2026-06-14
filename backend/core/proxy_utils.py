@@ -185,3 +185,32 @@ def build_proxy_config(proxy_record: Any) -> Dict[str, Any]:
             "password_len": len(password) if password else 0
         }
     }
+
+
+def verify_proxy_connectivity(proxy_record: Any, timeout: int = 5) -> Tuple[bool, str]:
+    """
+    Lightweight pre-flight check to verify if a proxy is reachable.
+    Uses socket.connect for SOCKS/HTTP to verify the port is open.
+    """
+    import socket
+
+    config = build_proxy_config(proxy_record)
+    details = config.get("details", {})
+    host = details.get("addr")
+    port = details.get("port")
+    p_type = details.get("type")
+
+    if not host or not port:
+        return False, "Invalid proxy configuration: missing host or port"
+
+    try:
+        # Standard socket check (TCP connect)
+        # This only verifies the proxy server is listening, not that it authorizes us
+        # or that it has internet connectivity. It's a "lightweight" check.
+        with socket.create_connection((host, int(port)), timeout=timeout):
+            pass
+        return True, f"Proxy {host}:{port} ({p_type}) is reachable."
+    except socket.timeout:
+        return False, f"Proxy connection timeout after {timeout}s ({host}:{port})"
+    except Exception as e:
+        return False, f"Proxy connection failed: {str(e)} ({host}:{port})"

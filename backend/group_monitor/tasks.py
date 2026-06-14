@@ -202,6 +202,16 @@ def group_monitor_task(self, job_id: int):
             )
             return
         account_id = job.telegram_account_id
+
+        # ── Stage 1: Safety Circuit Breaker ───────────────────────────────────
+        from core.account_protection import is_account_safe_for_job
+        is_safe, reason = is_account_safe_for_job(account_id, db=db)
+        if not is_safe:
+            logger.warning(f"group_monitor_task: Safety Circuit Breaker triggered for account {account_id}: {reason}")
+            job.status = "failed"
+            job.error_message = f"Safety Circuit Breaker: {reason}"
+            db.commit()
+            return
         config = json.loads(job.config) if job.config else {}
         job.status = "running"
         job.started_at = datetime.utcnow()

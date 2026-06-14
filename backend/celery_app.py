@@ -112,6 +112,31 @@ def on_worker_init(sender=None, **kwargs):
     concurrency = worker_opts.get("concurrency") or os.environ.get("CELERYD_CONCURRENCY", "(auto)")
     logger.info("[Worker] Queues: %s | Concurrency: %s", queues, concurrency)
 
+    # ── 1. Version Handshake ──────────────────────────────────────────────
+    if settings.ENABLE_VERSION_CHECK:
+        import redis as _redis
+        try:
+            r = _redis.from_url(settings.REDIS_URL, decode_responses=True)
+            api_version = r.get("system:app_version")
+            worker_version = settings.APP_VERSION
+
+            if api_version is None:
+                logger.warning("⚠️  [Worker] API version not found in Redis. Skipping handshake.")
+            elif api_version != worker_version:
+                logger.critical(
+                    "❌ [Worker] VERSION MISMATCH — API: %s | Worker: %s. Aborting startup.",
+                    api_version,
+                    worker_version,
+                )
+                # Fail fast
+                os._exit(1)
+            else:
+                logger.info("✅ [Worker] Version handshake passed: %s", worker_version)
+        except Exception as exc:
+            logger.error("⚠️  [Worker] Version handshake failed: %s", exc)
+            if settings.ENVIRONMENT == "production":
+                os._exit(1)
+
     max_retries = 10
     retry_interval = 5  # seconds
 

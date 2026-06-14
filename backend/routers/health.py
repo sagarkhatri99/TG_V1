@@ -107,7 +107,12 @@ async def get_account_health(
 
 @router.get("/diagnose")
 def diagnose():
-    checks = {"status": "healthy", "checks": {}}
+    from core.config import settings
+    checks = {
+        "status": "healthy",
+        "version": settings.APP_VERSION,
+        "checks": {}
+    }
 
     # Redis check
     try:

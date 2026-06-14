@@ -37,6 +37,12 @@ def mask_db_url(url: str) -> str:
 
 
 class Settings:
+    # Versioning
+    APP_VERSION: str = os.getenv("APP_VERSION", "1.0.0")
+    ENABLE_VERSION_CHECK: bool = os.getenv("ENABLE_VERSION_CHECK", "true").lower() == "true"
+    SAFETY_SCORE_THRESHOLD: float = float(os.getenv("SAFETY_SCORE_THRESHOLD", "20.0"))
+    ENABLE_OPERATING_HOURS_CHECK: bool = os.getenv("ENABLE_OPERATING_HOURS_CHECK", "true").lower() == "true"
+
     # Environment
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
 
